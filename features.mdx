@@ -1,0 +1,425 @@
+---
+title: Features
+description: Comprehensive overview of all Poke-Nex features and capabilities
+---
+
+## Overview
+
+Poke-Nex implements 8 core features that work together to deliver a premium Pokédex experience. Each feature is built with performance, user experience, and code maintainability in mind.
+
+## Static-first architecture (SSG/ISR)
+
+Poke-Nex uses **Static Site Generation** and **Incremental Static Regeneration** to pre-render all pages at build time.
+
+### Implementation details
+
+- **1025+ pages** generated in ~11.7 seconds
+- **Parallel build** using multi-threaded worker pools
+- **Weekly ISR cycle** keeps data fresh automatically
+- **Instant LCP** (Largest Contentful Paint)
+
+### Code example
+
+Pages are statically generated using `generateStaticParams`:
+
+```typescript src/app/pokemon/[slug]/page.tsx
+export async function generateStaticParams() {
+  const { data, error } = await getPokemonList()
+  if (error) throw new Error(JSON.stringify(error))
+  
+  // Generate static paths for all 1025+ Pokémon
+  return data.map((pokemon) => ({ 
+    slug: pokemon.name 
+  }))
+}
+```
+
+<Tip>
+  Static generation happens at build time, so users get instant page loads with zero API calls.
+</Tip>
+
+## Advanced search and filtering
+
+A high-performance filtering system powered by custom hooks and debounce logic.
+
+### Features
+
+- Search by **name** or **ID**
+- Filter by **type** (Fire, Water, Grass, etc.)
+- Filter by **region** (Kanto, Johto, Hoenn, etc.)
+- Sort by **name** or **ID** (ascending/descending)
+- **Debounced search** prevents CPU spikes
+
+### Implementation
+
+The `usePokeFilters` hook handles all filtering logic:
+
+```typescript src/hooks/usePokeFilters.ts
+export const usePokeFilters = (
+  pokeList: PokemonSummary[],
+  config: filterConfig = defaultConfig
+) => {
+  const { query, region, types, sort } = useTweaksStore()
+  const debSearch = useDebounce(query, config.debounce || 0)
+
+  const list = useMemo(() => {
+    let result = [...pokeList]
+
+    // 1. Search filter
+    if (query !== '') {
+      result = result.filter(
+        ({ name, id }) =>
+          name.toLowerCase().includes(query) || 
+          id.toString().includes(query)
+      )
+    }
+
+    // 2. Region filter
+    if (currentRegion) {
+      const { start, end } = currentRegion
+      result = result.filter((p) => p.id >= start && p.id <= end)
+    }
+
+    // 3. Type filter
+    if (types.length > 0) {
+      result = result.filter((pokemon) =>
+        types.some((t) => pokemon.types?.includes(t))
+      )
+    }
+
+    // 4. Sorting
+    result.sort((a, b) => {
+      if (sort === 'id-asc') return a.id - b.id
+      if (sort === 'id-desc') return b.id - a.id
+      if (sort === 'name-asc') return a.name.localeCompare(b.name)
+      if (sort === 'name-desc') return b.name.localeCompare(a.name)
+      return 0
+    })
+
+    return result
+  }, [pokeList, debSearch, types, sort, region])
+
+  return { list }
+}
+```
+
+<Note>
+  Filters are applied in memory using `useMemo` for optimal performance - no server calls needed.
+</Note>
+
+## Persisted tweaks engine
+
+An intelligent state management system using **Zustand** that preserves user preferences across sessions.
+
+### What gets persisted
+
+- **View mode** (Grid/List)
+- **Selected region** (Kanto, Johto, etc.)
+- **Type filters**
+
+### What gets reset
+
+- **Page number** (always starts at 1)
+- **Search query** (fresh navigation)
+- **Sort order** (resets to default)
+
+### Implementation
+
+The `useTweaksStore` uses Zustand's persist middleware with `sessionStorage`:
+
+```typescript src/stores/tweaks.store.ts
+export const useTweaksStore = create<TweaksState>()()
+  persist(
+    (set, get) => ({
+      page: 1,
+      region: 'all',
+      types: [],
+      query: '',
+      sort: 'id-asc',
+      view: 'grid',
+
+      setView: (view) => set({ view }),
+      setSort: (sort) => set({ sort, page: 1 }),
+      setRegion: (region) => {
+        const newRegion = region === get().region ? 'all' : region
+        set({ region: newRegion, page: 1 })
+      },
+      setTypes: (types) => set({ types, page: 1 }),
+    }),
+    {
+      name: 'pokenex-tweaks',
+      storage: createJSONStorage(() => sessionStorage),
+      
+      // Only persist specific fields
+      partialize: (state) => ({
+        view: state.view,
+        region: state.region,
+        types: state.types,
+      }),
+    }
+  )
+)
+```
+
+<Tip>
+  Using `partialize` ensures volatile data like pagination resets while preferences persist.
+</Tip>
+
+## Pokemon variations and forms
+
+Full support for switching between different Pokémon forms with dynamic type-based theming.
+
+### Supported variations
+
+- **Mega Evolutions** (Charizard X/Y, Mewtwo X/Y)
+- **Regional Forms** (Alolan, Galarian, Hisuian)
+- **Gigantamax Forms**
+- **Other Forms** (Deoxys, Rotom, Castform)
+
+### Dynamic type-theme engine
+
+The UI palette adapts based on the Pokémon's dominant type:
+
+```typescript src/components/pokemon/VarietyControls.tsx
+export const VarietyControls = ({
+  varieties,
+  selectedVariety,
+  onSelectVariety,
+  isShiny,
+  onToggleShiny,
+  theme,
+}: VarietyControlsProps) => {
+  const varietyOptions = varieties.map((variety) => ({
+    label: variety.name,
+    value: variety,
+  }))
+
+  return (
+    <div className="flex items-center gap-3">
+      {/* Form selector */}
+      {varieties.length > 1 && (
+        <CustomSelect
+          options={varietyOptions}
+          value={selectedVariety}
+          onSelect={onSelectVariety}
+        />
+      )}
+
+      {/* Shiny toggle with dynamic theme */}
+      <button
+        onClick={() => onToggleShiny(true)}
+        className={isShiny ? `${theme.bg} ${theme.text} shadow-lg` : ''}
+      >
+        SHINY
+      </button>
+    </div>
+  )
+}
+```
+
+## Hybrid view modes
+
+Flexible UI allows toggling between **Grid** and **List** views with persistent preferences.
+
+### Grid view
+
+- Card-based layout
+- Large sprite images
+- Type badges
+- Quick favorites toggle
+
+### List view
+
+- Compact table layout
+- Quick stat comparison
+- Sortable columns
+- Efficient scanning
+
+### Persistence
+
+View preference is stored in session storage:
+
+```typescript
+const { view, setView } = useTweaksStore()
+
+// Toggle between views
+<button onClick={() => setView(view === 'grid' ? 'list' : 'grid')}>
+  {view === 'grid' ? 'List View' : 'Grid View'}
+</button>
+```
+
+<Note>
+  The layout choice persists across page navigation within the same session.
+</Note>
+
+## Dynamic favorite system
+
+Integrated **Zustand + localStorage** persistence for curating a personal collection.
+
+### Features
+
+- **Instant state updates** across the entire app
+- **localStorage persistence** survives browser restarts
+- **Real-time UI feedback**
+- **Favorites page** for viewing collection
+
+### Implementation
+
+The `useFavoriteStore` handles all favorite operations:
+
+```typescript src/stores/favorite.store.ts
+export const useFavoriteStore = create<Store>()()
+  persist(
+    (set, get) => ({
+      favorites: [],
+      
+      isFavorite: (id) => 
+        get().favorites.some((p) => p.id === id),
+      
+      toggleFavorite: (pokemon) => {
+        const { favorites, isFavorite } = get()
+        set({
+          favorites: isFavorite(pokemon.id)
+            ? favorites.filter((p) => p.id !== pokemon.id)
+            : [...favorites, pokemon],
+        })
+      },
+    }),
+    {
+      name: 'POKENEX-FAVORITE-LIST',
+      // Uses localStorage by default
+    }
+  )
+)
+```
+
+### Usage in components
+
+```typescript
+import { useFavoriteActions, useIsFavorite } from '@/stores/favorite.store'
+
+function FavoriteButton({ pokemon }) {
+  const { toggleFavorite } = useFavoriteActions()
+  const isFavorite = useIsFavorite(pokemon.id)
+
+  return (
+    <button onClick={() => toggleFavorite(pokemon)}>
+      {isFavorite ? '❤️' : '🤍'}
+    </button>
+  )
+}
+```
+
+## Smart hydration guard
+
+Custom implementation prevents UI flickering between server-rendered HTML and client-side persisted state.
+
+### The problem
+
+When using `sessionStorage` or `localStorage`, the server renders one state but the client loads different data, causing a flash of incorrect content.
+
+### The solution
+
+The `useHydrated` hook ensures components only render after client-side hydration:
+
+```typescript src/hooks/useHydrated.ts
+export const useHydrated = () => {
+  const [hydrated, setHydrated] = useState(false)
+
+  useEffect(() => {
+    // Only runs in browser after mount
+    setHydrated(true)
+  }, [])
+
+  return hydrated
+}
+```
+
+### Usage
+
+```typescript
+import { useHydrated } from '@/hooks/useHydrated'
+
+function FilterBar() {
+  const hydrated = useHydrated()
+  const { types } = useTweaksStore()
+
+  if (!hydrated) {
+    return <FilterBarSkeleton />
+  }
+
+  return <div>Active filters: {types.length}</div>
+}
+```
+
+<Tip>
+  This pattern eliminates hydration warnings while maintaining instant perceived performance.
+</Tip>
+
+## Clean architecture layers
+
+Three-layer separation ensures maintainable, testable, and scalable code.
+
+### Architecture layers
+
+1. **Fetchers** (`src/lib/api/`) - Raw API calls
+2. **Adapters** (`src/adapters/`) - Data transformation
+3. **Services** (`src/services/`) - Business logic
+
+### Example flow
+
+```typescript
+// Layer 1: Fetcher (API call)
+export const fetchPokemonByID = async (id: string) => {
+  const response = await fetch(`https://pokeapi.co/api/v2/pokemon/${id}`)
+  return response.json()
+}
+
+// Layer 2: Adapter (transformation)
+export const adaptPokemon = (apiData: ApiPokemonResponse): PokemonDetail => {
+  return {
+    id: apiData.id,
+    name: apiData.name,
+    types: apiData.types.map(t => t.type.name),
+    height: apiData.height / 10, // Convert to meters
+    weight: apiData.weight / 10, // Convert to kg
+    stats: mapStats(apiData.stats),
+    // ... more transformations
+  }
+}
+
+// Layer 3: Service (business logic)
+export const getPokemonDetail = async (
+  slug: string
+): Promise<ServiceResponse<PokemonDetail>> => {
+  try {
+    if (!slug) throw new Error('Slug required')
+    const data = await fetchPokemonByID(slug)
+    return { data: adaptPokemon(data), error: null }
+  } catch (error) {
+    return { data: null, error: handleServiceError(error) }
+  }
+}
+```
+
+### Benefits
+
+- **Testability:** Each layer can be tested independently
+- **Maintainability:** Changes in API don't affect components
+- **Reusability:** Adapters and services work across the app
+- **Type safety:** Full TypeScript coverage through all layers
+
+<Note>
+  This architecture makes it easy to swap data sources or add caching without touching components.
+</Note>
+
+## What's next?
+
+<CardGroup cols={2}>
+  <Card title="Architecture deep dive" icon="building" href="/architecture/overview">
+    Learn more about the Clean Architecture implementation
+  </Card>
+  <Card title="Component reference" icon="cube" href="/components/overview">
+    Explore all available components and their APIs
+  </Card>
+</CardGroup>

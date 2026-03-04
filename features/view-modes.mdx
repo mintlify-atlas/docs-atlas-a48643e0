@@ -1,0 +1,348 @@
+---
+title: 'View Modes'
+description: 'Switch between grid and table view modes with persistent preferences'
+---
+
+Poke-Nex offers two distinct view modes for browsing Pokemon: **Grid View** and **Table View**. Users can toggle between these views, and their preference is persisted using sessionStorage.
+
+## View Mode Types
+
+The view mode is defined as a simple string union type:
+
+```typescript tweaks.store.ts
+export type View = 'grid' | 'list'
+```
+
+## State Management
+
+View mode state is managed in the Zustand tweaks store (`src/stores/tweaks.store.ts`):
+
+```typescript tweaks.store.ts
+import { create } from 'zustand'
+import { persist, createJSONStorage } from 'zustand/middleware'
+
+export type View = 'grid' | 'list'
+
+interface TweaksState {
+  view: View
+  setView: (view: View) => void
+  // ... other state
+}
+
+export const useTweaksStore = create<TweaksState>()(persist(
+  (set, get) => ({
+    view: 'grid',
+    setView: (view) => set({ view }),
+    // ... other actions
+  }),
+  {
+    name: 'pokenex-tweaks',
+    storage: createJSONStorage(() => sessionStorage),
+    partialize: (state) => ({
+      view: state.view,
+      region: state.region,
+      types: state.types,
+    }),
+  }
+))
+```
+
+<Info>
+  The `partialize` function selects which parts of state to persist. The `view` preference is saved to sessionStorage and restored on page reload.
+</Info>
+
+## Grid View
+
+Grid view displays Pokemon as cards in a responsive grid layout.
+
+### GridContainer Component
+
+```typescript GridContainer.tsx
+interface Props {
+  children: React.ReactNode
+}
+
+export const GridContainer = ({ children }: Props) => {
+  return (
+    <div className="grid gap-6 grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-y-24 mt-20">
+      {children}
+    </div>
+  )
+}
+```
+
+### Features
+
+<CardGroup cols={2}>
+  <Card title="Auto-fill Grid" icon="table-cells">
+    Uses CSS Grid's `auto-fill` to automatically adjust columns based on available space.
+  </Card>
+  
+  <Card title="Minimum 240px" icon="ruler">
+    Each card has a minimum width of 240px, ensuring readability on all devices.
+  </Card>
+  
+  <Card title="Responsive" icon="mobile">
+    Automatically adapts from 1 column on mobile to 4+ columns on desktop.
+  </Card>
+  
+  <Card title="Vertical Spacing" icon="arrows-up-down">
+    Extra vertical gap (24px) accommodates Pokemon images that overflow the card.
+  </Card>
+</CardGroup>
+
+### Grid View Usage
+
+```typescript PokeGallery.tsx
+{view === 'grid' ? (
+  <GridContainer>
+    {paginatedList.map((pokemon) => (
+      <PokemonCard key={pokemon.id} content={pokemon} />
+    ))}
+  </GridContainer>
+) : (
+  <PokemonTable content={paginatedList} />
+)}
+```
+
+## Table View
+
+Table view displays Pokemon in a compact, scannable table format.
+
+### PokemonTable Component
+
+```typescript PokemonTable.tsx
+interface Props {
+  content: PokemonSummary[]
+}
+
+export const PokemonTable = ({ content }: Props) => {
+  return (
+    <div className="w-full overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900/25">
+      <table className="w-full text-left border-collapse">
+        <thead className="bg-zinc-800/30">
+          <tr className="border-b border-zinc-800 text-zinc-400">
+            <th className="py-4 pl-4 pr-2">ID</th>
+            <th className="py-4 px-2">Pokémon</th>
+            <th className="py-4 px-2">Types</th>
+            <th className="py-4 pl-2 pr-4 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {content.map((pokemon) => (
+            <TableRow key={pokemon.id} pokemon={pokemon} />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+```
+
+### Table Row Implementation
+
+```typescript TableRow.tsx
+const TableRow = memo(({ pokemon }: { pokemon: PokemonSummary }) => {
+  const router = useRouter()
+  const toggleFavorite = useFavoriteActions().toggleFavorite
+  const isFavorite = useIsFavorite(pokemon.id)
+
+  const id = pokemon.id.toString().padStart(3, '0')
+  const type = getMostColorfulType(pokemon.types)
+  const theme = POKE_THEMES[type]
+
+  const handleRowClick = () => {
+    router.push(`/pokemon/${pokemon.name}`)
+  }
+
+  return (
+    <tr
+      onClick={handleRowClick}
+      className="group border-b border-zinc-800/50 hover:bg-zinc-800/60 transition-colors cursor-pointer"
+    >
+      <td className="py-4 pl-4 pr-2 text-zinc-500">{id}</td>
+      <td className="py-4 px-2">
+        <div className="flex items-center gap-4">
+          <SpriteImage
+            src={pokemon.image}
+            width={48}
+            height={48}
+            theme={theme}
+            className="group-hover:scale-110 transition-transform"
+          />
+          <span className="capitalize text-zinc-100">
+            {pokemon.name}
+          </span>
+        </div>
+      </td>
+      <td className="py-4 px-2">
+        <div className="flex gap-2">
+          {pokemon.types.map((type) => (
+            <TypeBadge key={type} type={type} />
+          ))}
+        </div>
+      </td>
+      <td className="py-4 pl-4 pr-6 text-right">
+        <button onClick={handleFavoriteClick}>
+          <IoHeart className={isFavorite ? 'text-rose-500' : 'text-zinc-600'} />
+        </button>
+      </td>
+    </tr>
+  )
+})
+```
+
+<Note>
+  The `TableRow` component is memoized to prevent re-renders when unrelated state changes.
+</Note>
+
+## View Toggle Control
+
+The view toggle button is part of the FilterBar component:
+
+```typescript FilterBar.tsx
+import { IoGrid } from 'react-icons/io5'
+import { HiMiniListBullet } from 'react-icons/hi2'
+
+<button
+  title="Change View"
+  onClick={() => onViewUpdate(view === 'grid' ? 'list' : 'grid')}
+  className="grid place-items-center w-10 h-10 p-2 rounded-md bg-zinc-800 text-zinc-400 hover:brightness-[1.2]"
+>
+  {view === 'list' ? (
+    <IoGrid className="text-[20px]" />
+  ) : (
+    <HiMiniListBullet className="text-[24px]" />
+  )}
+</button>
+```
+
+The button shows the **opposite** view icon:
+- When in list view, shows grid icon
+- When in grid view, shows list icon
+
+This indicates what will happen when clicked.
+
+## Integration in PokeGallery
+
+```typescript PokeGallery.tsx
+'use client'
+
+import { useTweaksStore } from '@/stores/tweaks.store'
+
+export const PokeGallery = ({ content }: Props) => {
+  const view = useTweaksStore((s) => s.view)
+  const setView = useTweaksStore((s) => s.setView)
+
+  return (
+    <section>
+      <FilterBar
+        view={view}
+        onViewUpdate={setView}
+        {/* ... other props */}
+      />
+
+      {paginatedList.length > 0 ? (
+        view === 'grid' ? (
+          <GridContainer>
+            {paginatedList.map((pokemon) => (
+              <PokemonCard key={pokemon.id} content={pokemon} />
+            ))}
+          </GridContainer>
+        ) : (
+          <PokemonTable content={paginatedList} />
+        )
+      ) : (
+        <EmptyState />
+      )}
+    </section>
+  )
+}
+```
+
+## sessionStorage vs localStorage
+
+Poke-Nex uses **sessionStorage** for view preferences:
+
+```typescript
+storage: createJSONStorage(() => sessionStorage)
+```
+
+<Accordion title="Why sessionStorage?">
+  <AccordionGroup>
+    <Accordion title="Tab Isolation">
+      Each browser tab maintains its own view preference. This is intentional - users might want grid view in one tab and table view in another.
+    </Accordion>
+    
+    <Accordion title="Fresh Start">
+      When you close all tabs and return later, the view resets to the default (grid). This prevents confusing users who might have switched to table view temporarily.
+    </Accordion>
+    
+    <Accordion title="Privacy">
+      sessionStorage data is cleared when the session ends, providing better privacy than localStorage.
+    </Accordion>
+  </AccordionGroup>
+</Accordion>
+
+## Conditional Rendering
+
+The view mode determines which component renders:
+
+```typescript
+{view === 'grid' ? (
+  <GridContainer>...</GridContainer>
+) : (
+  <PokemonTable>...</PokemonTable>
+)}
+```
+
+Both components receive the same filtered and paginated data, ensuring consistency.
+
+## Responsive Behavior
+
+### Grid View
+- **Mobile (< 640px)**: 1 column
+- **Tablet (640px - 1024px)**: 2-3 columns
+- **Desktop (> 1024px)**: 3-4 columns
+- **Wide (> 1440px)**: 4+ columns
+
+### Table View
+- **Mobile**: Horizontal scroll enabled
+- **Tablet**: Type badges shown, icons on mobile
+- **Desktop**: Full table with all columns visible
+
+<Warning>
+  On mobile devices, the table uses horizontal scrolling. The grid view is generally more mobile-friendly.
+</Warning>
+
+## Performance Optimization
+
+Both view modes are optimized for performance:
+
+<Steps>
+  <Step title="Memoization">
+    TableRow components use `React.memo()` to prevent unnecessary re-renders.
+  </Step>
+  
+  <Step title="Key Props">
+    All list items use stable `key={pokemon.id}` for efficient reconciliation.
+  </Step>
+  
+  <Step title="Pagination">
+    Only 24 items render at a time, regardless of view mode.
+  </Step>
+  
+  <Step title="Event Handlers">
+    Click handlers are defined outside JSX to maintain referential equality.
+  </Step>
+</Steps>
+
+## Default View
+
+The default view is **grid**:
+
+```typescript
+view: 'grid'
+```
+
+This can be changed by modifying the initial state in `tweaks.store.ts`.

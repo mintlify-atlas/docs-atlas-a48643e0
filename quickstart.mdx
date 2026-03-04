@@ -1,80 +1,193 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get up and running with Poke-Nex in under 5 minutes
 ---
 
-## Get started in three steps
+Get Poke-Nex running on your local machine in just a few steps. This guide will walk you through cloning the repository, installing dependencies, and starting the development server.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+Before you begin, make sure you have:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+- **Node.js 20+** installed on your machine
+- **Package manager:** npm, yarn, or pnpm (we recommend pnpm)
+- **Git** for cloning the repository
+
+## Installation
+
+<Steps>
+  <Step title="Clone the repository">
+    Clone the Poke-Nex repository from GitHub:
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    ```bash
+    git clone https://github.com/codentide/poke-nex.git
+    cd poke-nex
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    Install the project dependencies using your preferred package manager:
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    <CodeGroup>
+    ```bash npm
+    npm install
+    ```
+    ```bash yarn
+    yarn install
+    ```
+    ```bash pnpm
+    pnpm install
+    ```
+    </CodeGroup>
+  </Step>
 
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+  <Step title="Start the development server">
+    Run the development server:
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    <CodeGroup>
+    ```bash npm
+    npm run dev
+    ```
+    ```bash yarn
+    yarn dev
+    ```
+    ```bash pnpm
+    pnpm dev
+    ```
+    </CodeGroup>
+    
+    Open [http://localhost:3000](http://localhost:3000) in your browser to see the application.
+  </Step>
+</Steps>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+## Production build
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+To create an optimized production build:
 
-### Step 3: Go live
+<CodeGroup>
+```bash npm
+npm run build
+npm start
+```
+```bash yarn
+yarn build
+yarn start
+```
+```bash pnpm
+pnpm build
+pnpm start
+```
+</CodeGroup>
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+<Note>
+  The build process pre-renders 1025+ Pokémon pages using Static Site Generation (SSG). This typically takes around 11-12 seconds thanks to parallel build workers.
+</Note>
+
+## Project structure
+
+Understanding the project structure will help you navigate the codebase:
+
+```
+poke-nex/
+├── src/
+│   ├── app/              # Next.js App Router pages
+│   │   ├── page.tsx      # Home page (Pokemon gallery)
+│   │   ├── pokemon/      # Pokemon detail pages
+│   │   ├── favorites/    # Favorites page
+│   │   └── calculator/   # Type calculator
+│   ├── components/       # React components
+│   │   ├── pokemon/      # Pokemon-specific components
+│   │   └── calculator/   # Type calculator components
+│   ├── services/         # Business logic layer
+│   ├── adapters/         # Data transformation layer
+│   ├── lib/              # Utilities and API fetchers
+│   │   ├── api/          # PokeAPI fetchers
+│   │   └── utils/        # Helper functions
+│   ├── stores/           # Zustand state stores
+│   ├── hooks/            # Custom React hooks
+│   ├── types/            # TypeScript type definitions
+│   └── constants/        # App constants
+├── public/               # Static assets
+└── next.config.ts        # Next.js configuration
+```
+
+## Example: Home page
+
+Here's how the home page fetches and displays the Pokémon list using Clean Architecture:
+
+```typescript src/app/page.tsx
+import { PokeGallery } from '@/components/pokemon'
+import { getPokemonListGQL } from '@/services/pokemon.service'
+
+export default async function Home() {
+  const { data: pokemonList, error } = await getPokemonListGQL()
+  if (error) throw new Error(JSON.stringify(error))
+
+  return (
+    <main className="flex flex-col gap-8 min-h-screen py-12 px-[4%] md:px-[12%] lg:px-[20%]">
+      <div className="flex flex-col items-center gap-2 text-center">
+        <h1 className="text-4xl lg:text-6xl font-bold uppercase font-rajdhani text-zinc-300">
+          Explore
+        </h1>
+        <p className="text-zinc-500 text-md">
+          Discover information and statistics about your favorite Pokémon.
+        </p>
+      </div>
+      <PokeGallery content={pokemonList} />
+    </main>
+  )
+}
+```
+
+## Example: Pokemon detail with SSG
+
+Each Pokémon detail page is statically generated at build time:
+
+```typescript src/app/pokemon/[slug]/page.tsx
+export async function generateStaticParams() {
+  const { data } = await getPokemonList()
+  if (!data) return []
+  
+  return data.map(({ name }) => ({ slug: name }))
+}
+
+export default async function PokemonPage({ params }: Props) {
+  const { slug } = await params
+  const { data: pokemon, error } = await getPokemonDetail(slug)
+  
+  if (error || !pokemon) notFound()
+  
+  return <PokemonDetailView pokemon={pokemon} />
+}
+```
+
+## Development tips
+
+<Tip>
+  Use the **type calculator** at `/calculator` to explore Pokémon type effectiveness and weaknesses.
+</Tip>
+
+<Tip>
+  The favorites system persists to localStorage, so your collection is preserved across sessions.
+</Tip>
+
+<Note>
+  View mode preferences (Grid vs Table) are stored in sessionStorage and reset when you close the browser tab.
+</Note>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Explore features" icon="star" href="/features">
+    Learn about all 8 key features and how they work
+  </Card>
+  <Card title="Architecture guide" icon="building" href="/architecture/overview">
+    Understand the Clean Architecture pattern
+  </Card>
+  <Card title="Component library" icon="cube" href="/components/overview">
+    Browse the reusable component catalog
+  </Card>
+  <Card title="API reference" icon="code" href="/api/services/pokemon-service">
+    Explore the services, adapters, and hooks
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

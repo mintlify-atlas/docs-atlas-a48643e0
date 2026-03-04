@@ -1,0 +1,470 @@
+---
+title: Favorite Store
+description: Zustand store for managing Pokemon favorites with localStorage persistence
+---
+
+The Favorite Store provides a global state management solution for tracking user's favorite Pokemon, with automatic persistence to localStorage and optimized selector hooks.
+
+## Store Definition
+
+```typescript
+import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
+import { PokemonSummary } from '@/types'
+
+interface Store {
+  favorites: PokemonSummary[]
+  toggleFavorite: (pokemon: PokemonSummary) => void
+  isFavorite: (id: number) => boolean
+}
+
+const useFavoriteStore = create<Store>()(persist(...))
+```
+
+---
+
+## State
+
+### favorites
+
+<ResponseField name="favorites" type="PokemonSummary[]">
+  Array of favorited Pokemon, each containing:
+  - `id` (number): Pokemon ID
+  - `name` (string): Pokemon name
+  - `types` (string[]): Array of type names
+  - `image` (string): Sprite image URL
+</ResponseField>
+
+---
+
+## Actions
+
+### toggleFavorite
+
+Adds or removes a Pokemon from favorites.
+
+```typescript
+toggleFavorite(pokemon: PokemonSummary): void
+```
+
+<ParamField path="pokemon" type="PokemonSummary" required>
+  Pokemon object to toggle. Must contain `id`, `name`, `types`, and `image`.
+</ParamField>
+
+**Behavior**:
+- If Pokemon is already favorited → Removes it
+- If Pokemon is not favorited → Adds it
+- Automatically saves to localStorage
+
+### isFavorite
+
+Checks if a Pokemon is in favorites.
+
+```typescript
+isFavorite(id: number): boolean
+```
+
+<ParamField path="id" type="number" required>
+  Pokemon ID to check
+</ParamField>
+
+**Returns**: `true` if Pokemon is favorited, `false` otherwise
+
+---
+
+## Usage
+
+### Basic Toggle
+
+```typescript
+import { useFavoriteStore } from '@/stores/favorite.store'
+
+function FavoriteButton({ pokemon }) {
+  const toggleFavorite = useFavoriteStore(state => state.toggleFavorite)
+  const isFavorite = useFavoriteStore(state => state.isFavorite(pokemon.id))
+
+  return (
+    <button onClick={() => toggleFavorite(pokemon)}>
+      {isFavorite ? '♥ Remove' : '♡ Add'}
+    </button>
+  )
+}
+```
+
+### Display Favorites List
+
+```typescript
+import { useFavoriteStore } from '@/stores/favorite.store'
+
+function FavoritesList() {
+  const favorites = useFavoriteStore(state => state.favorites)
+
+  if (favorites.length === 0) {
+    return <p>No favorites yet!</p>
+  }
+
+  return (
+    <div className="grid">
+      {favorites.map(pokemon => (
+        <PokemonCard key={pokemon.id} {...pokemon} />
+      ))}
+    </div>
+  )
+}
+```
+
+---
+
+## Optimized Selector Hooks
+
+The store provides specialized hooks for common use cases:
+
+### useFavoriteState
+
+Returns the full favorites array.
+
+```typescript
+useFavoriteState(): PokemonSummary[]
+```
+
+**Usage**:
+
+```typescript
+import { useFavoriteState } from '@/stores/favorite.store'
+
+function FavoriteCount() {
+  const favorites = useFavoriteState()
+  
+  return <span>{favorites.length} favorites</span>
+}
+```
+
+### useIsFavorite
+
+Optimized hook to check if a specific Pokemon is favorited.
+
+```typescript
+useIsFavorite(id: number): boolean
+```
+
+<ParamField path="id" type="number" required>
+  Pokemon ID to check
+</ParamField>
+
+**Usage**:
+
+```typescript
+import { useIsFavorite } from '@/stores/favorite.store'
+
+function PokemonCard({ pokemon }) {
+  const isFavorite = useIsFavorite(pokemon.id)
+
+  return (
+    <div className={isFavorite ? 'favorited' : ''}>
+      <h3>{pokemon.name}</h3>
+      {isFavorite && <span>♥</span>}
+    </div>
+  )
+}
+```
+
+**Performance**: Only re-renders when the favorite status of this specific Pokemon changes, not when any favorite changes.
+
+### useFavoriteActions
+
+Returns action functions without subscribing to state changes.
+
+```typescript
+useFavoriteActions(): { toggleFavorite: (pokemon: PokemonSummary) => void }
+```
+
+**Usage**:
+
+```typescript
+import { useFavoriteActions } from '@/stores/favorite.store'
+
+function AddToFavoritesButton({ pokemon }) {
+  const { toggleFavorite } = useFavoriteActions()
+
+  return (
+    <button onClick={() => toggleFavorite(pokemon)}>
+      Add to Favorites
+    </button>
+  )
+}
+```
+
+**Performance**: Component never re-renders due to favorites changing (actions are stable references).
+
+---
+
+## Implementation Details
+
+### Toggle Logic
+
+```typescript
+toggleFavorite: (pokemon) => {
+  const { favorites, isFavorite } = get()
+  
+  // Create clean copy of pokemon data
+  const newPokemon: PokemonSummary = {
+    id: pokemon.id,
+    name: pokemon.name,
+    types: pokemon.types,
+    image: pokemon.image,
+  }
+  
+  set({
+    favorites: isFavorite(newPokemon.id)
+      ? favorites.filter(p => p.id !== newPokemon.id)  // Remove
+      : [...favorites, newPokemon]                      // Add
+  })
+}
+```
+
+**Key points**:
+- Creates a clean copy to ensure only necessary data is stored
+- Uses functional update pattern for immutability
+- Automatically triggers localStorage persistence
+
+### Persistence Configuration
+
+```typescript
+persist(
+  // ... store implementation
+  {
+    name: 'POKENEX-FAVORITE-LIST',
+  }
+)
+```
+
+**Storage**:
+- **Key**: `POKENEX-FAVORITE-LIST`
+- **Location**: `localStorage`
+- **Format**: JSON stringified array
+- **Persistence**: Survives page refreshes and browser restarts
+
+---
+
+## Complete Examples
+
+### Favorite Toggle with Icon
+
+```typescript
+import { useFavoriteStore, useIsFavorite } from '@/stores/favorite.store'
+import { Heart } from 'lucide-react'
+
+function FavoriteIcon({ pokemon }) {
+  const isFavorite = useIsFavorite(pokemon.id)
+  const { toggleFavorite } = useFavoriteStore(state => ({
+    toggleFavorite: state.toggleFavorite
+  }))
+
+  return (
+    <button
+      onClick={() => toggleFavorite(pokemon)}
+      className={`favorite-btn ${isFavorite ? 'active' : ''}`}
+      aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+    >
+      <Heart 
+        fill={isFavorite ? 'red' : 'none'}
+        stroke={isFavorite ? 'red' : 'currentColor'}
+      />
+    </button>
+  )
+}
+```
+
+### Favorites Page
+
+```typescript
+import { useFavoriteState } from '@/stores/favorite.store'
+import { usePaginate } from '@/hooks/usePaginate'
+
+function FavoritesPage() {
+  const favorites = useFavoriteState()
+  const { paginated, current, pages, next, prev } = usePaginate(favorites, 12)
+
+  if (favorites.length === 0) {
+    return (
+      <div className="empty-state">
+        <h2>No favorites yet</h2>
+        <p>Start adding Pokemon to your favorites!</p>
+        <Link href="/introduction">Browse Pokemon</Link>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <h1>My Favorites ({favorites.length})</h1>
+      
+      <div className="grid grid-cols-3 gap-4">
+        {paginated.map(pokemon => (
+          <PokemonCard key={pokemon.id} pokemon={pokemon} />
+        ))}
+      </div>
+
+      {pages > 1 && (
+        <Pagination {...{ current, pages, next, prev }} />
+      )}
+    </div>
+  )
+}
+```
+
+### Favorite Counter Badge
+
+```typescript
+import { useFavoriteState } from '@/stores/favorite.store'
+import Link from 'next/link'
+
+function FavoritesBadge() {
+  const favorites = useFavoriteState()
+
+  return (
+    <Link href="/favorites" className="relative">
+      <Heart className="w-6 h-6" />
+      {favorites.length > 0 && (
+        <span className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">
+          {favorites.length}
+        </span>
+      )}
+    </Link>
+  )
+}
+```
+
+### Remove All Favorites
+
+```typescript
+import { useFavoriteStore } from '@/stores/favorite.store'
+
+function ClearFavoritesButton() {
+  const clearAll = useFavoriteStore(state => () => {
+    state.favorites.forEach(pokemon => state.toggleFavorite(pokemon))
+  })
+
+  return (
+    <button onClick={clearAll} className="btn-danger">
+      Clear All Favorites
+    </button>
+  )
+}
+
+// Or add a dedicated action to the store:
+// clearAll: () => set({ favorites: [] })
+```
+
+### Bulk Add to Favorites
+
+```typescript
+import { useFavoriteStore } from '@/stores/favorite.store'
+
+function BulkAddButton({ pokemonList }) {
+  const toggleFavorite = useFavoriteStore(state => state.toggleFavorite)
+  const isFavorite = useFavoriteStore(state => state.isFavorite)
+
+  const addAll = () => {
+    pokemonList.forEach(pokemon => {
+      if (!isFavorite(pokemon.id)) {
+        toggleFavorite(pokemon)
+      }
+    })
+  }
+
+  return (
+    <button onClick={addAll}>
+      Add All to Favorites
+    </button>
+  )
+}
+```
+
+---
+
+## Hydration Handling
+
+When using with Next.js, prevent hydration mismatches:
+
+```typescript
+import { useHydrated } from '@/hooks/useHydrated'
+import { useIsFavorite } from '@/stores/favorite.store'
+
+function SafeFavoriteButton({ pokemon }) {
+  const hydrated = useHydrated()
+  const isFavorite = useIsFavorite(pokemon.id)
+  const { toggleFavorite } = useFavoriteActions()
+
+  // Show neutral state during SSR
+  if (!hydrated) {
+    return <button disabled>♡</button>
+  }
+
+  return (
+    <button onClick={() => toggleFavorite(pokemon)}>
+      {isFavorite ? '♥' : '♡'}
+    </button>
+  )
+}
+```
+
+---
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Selector Hooks">
+    Prefer specialized hooks for better performance:
+    ```typescript
+    // Good - only re-renders when this Pokemon's status changes
+    const isFavorite = useIsFavorite(pokemon.id)
+    
+    // Bad - re-renders on any favorite change
+    const favorites = useFavoriteStore(state => state.favorites)
+    const isFavorite = favorites.some(p => p.id === pokemon.id)
+    ```
+  </Accordion>
+
+  <Accordion title="Pass Full Pokemon Object">
+    Always pass complete `PokemonSummary` to `toggleFavorite`:
+    ```typescript
+    // Good
+    toggleFavorite({ id: 25, name: 'pikachu', types: ['electric'], image: '...' })
+    
+    // Bad - will cause type errors
+    toggleFavorite({ id: 25 })
+    ```
+  </Accordion>
+
+  <Accordion title="Handle Empty State">
+    Always check for empty favorites:
+    ```typescript
+    const favorites = useFavoriteState()
+    
+    if (favorites.length === 0) {
+      return <EmptyState />
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Use with Hydration Check">
+    Prevent SSR mismatches with `useHydrated`:
+    ```typescript
+    const hydrated = useHydrated()
+    const isFavorite = useIsFavorite(pokemon.id)
+    
+    if (!hydrated) return <Skeleton />
+    return <FavoriteButton />
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Related
+
+- [useHydrated Hook](/api/hooks/use-hydrated) - Prevent hydration mismatches
+- [usePaginate Hook](/api/hooks/use-paginate) - Paginate favorites list
+- [Pokemon Summary Adapter](/api/adapters/pokemon-summary) - Creates the stored data format
+- [Tweaks Store](/api/stores/tweaks-store) - Similar Zustand store for UI preferences

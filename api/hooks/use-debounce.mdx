@@ -1,0 +1,370 @@
+---
+title: useDebounce
+description: React hook that delays updating a value until after a specified time period of inactivity
+---
+
+The `useDebounce` hook provides a simple way to debounce rapidly changing values, useful for optimizing performance in search inputs, API calls, and expensive computations.
+
+## Signature
+
+```typescript
+useDebounce<T>(state: T, time?: number): T
+```
+
+### Parameters
+
+<ParamField path="state" type="T" required>
+  The value to debounce. Can be any type (string, number, object, array, etc.)
+</ParamField>
+
+<ParamField path="time" type="number" default="300">
+  Delay in milliseconds before updating the debounced value. Defaults to 300ms.
+</ParamField>
+
+### Returns
+
+<ResponseField name="debouncedValue" type="T">
+  The debounced version of the input state. Updates only after the specified delay period has passed without changes to the input.
+</ResponseField>
+
+---
+
+## Usage Example
+
+### Basic Search Input
+
+```typescript
+import { useState } from 'react'
+import { useDebounce } from '@/hooks/useDebounce'
+
+function SearchBar() {
+  const [searchTerm, setSearchTerm] = useState('')
+  const debouncedSearch = useDebounce(searchTerm, 500)
+
+  // This effect runs only when user stops typing for 500ms
+  useEffect(() => {
+    if (debouncedSearch) {
+      console.log('Searching for:', debouncedSearch)
+      // Make API call or filter data
+      fetchSearchResults(debouncedSearch)
+    }
+  }, [debouncedSearch])
+
+  return (
+    <input
+      type="text"
+      value={searchTerm}
+      onChange={(e) => setSearchTerm(e.target.value)}
+      placeholder="Search Pokemon..."
+    />
+  )
+}
+```
+
+**Behavior**:
+- User types "p" → No API call yet
+- User types "pi" → No API call yet
+- User types "pik" → No API call yet
+- User stops typing for 500ms → API call with "pik"
+- User types "pika" → Previous timeout canceled, new timeout starts
+- User stops typing for 500ms → API call with "pika"
+
+---
+
+## Advanced Examples
+
+### Debounced Form Validation
+
+```typescript
+function EmailInput() {
+  const [email, setEmail] = useState('')
+  const debouncedEmail = useDebounce(email, 1000)
+  const [isValid, setIsValid] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    if (debouncedEmail) {
+      // Validate only after user stops typing
+      const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(debouncedEmail)
+      setIsValid(valid)
+    }
+  }, [debouncedEmail])
+
+  return (
+    <div>
+      <input
+        type="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+      />
+      {isValid === false && <span>Invalid email</span>}
+      {isValid === true && <span>Valid email</span>}
+    </div>
+  )
+}
+```
+
+### Debounced Window Resize
+
+```typescript
+function ResponsiveComponent() {
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth)
+  const debouncedWidth = useDebounce(windowWidth, 200)
+
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  useEffect(() => {
+    // Expensive layout recalculation only after resize stops
+    console.log('Recalculating layout for width:', debouncedWidth)
+    recalculateLayout()
+  }, [debouncedWidth])
+
+  return <div>Window width: {debouncedWidth}px</div>
+}
+```
+
+### Debounced API Call with Loading State
+
+```typescript
+function PokemonSearch() {
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState([])
+  const [loading, setLoading] = useState(false)
+  const debouncedQuery = useDebounce(query, 400)
+
+  useEffect(() => {
+    if (!debouncedQuery) {
+      setResults([])
+      return
+    }
+
+    setLoading(true)
+    searchPokemon(debouncedQuery)
+      .then(data => setResults(data))
+      .finally(() => setLoading(false))
+  }, [debouncedQuery])
+
+  return (
+    <div>
+      <input 
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      />
+      {loading && <span>Searching...</span>}
+      {results.map(pokemon => <div key={pokemon.id}>{pokemon.name}</div>)}
+    </div>
+  )
+}
+```
+
+---
+
+## How It Works
+
+The hook uses `setTimeout` to delay updates:
+
+```typescript
+useEffect(() => {
+  const timeoutID = setTimeout(() => {
+    setDebState(state)
+  }, time)
+
+  return () => {
+    clearTimeout(timeoutID)
+  }
+}, [state, time])
+```
+
+**Step-by-step**:
+
+1. **Input changes** → `state` parameter updates
+2. **Effect runs** → Previous timeout is cleared (cleanup)
+3. **New timeout starts** → Waits for `time` milliseconds
+4. **If input changes again** → Repeat from step 2
+5. **If timeout completes** → `debouncedValue` updates
+
+---
+
+## Performance Benefits
+
+### Without Debounce
+
+```typescript
+// API call on every keystroke
+function BadSearch() {
+  const [query, setQuery] = useState('')
+
+  useEffect(() => {
+    fetchResults(query) // Called for EVERY character typed
+  }, [query])
+
+  return <input onChange={e => setQuery(e.target.value)} />
+}
+
+// User types "pikachu" (7 characters) = 7 API calls!
+```
+
+### With Debounce
+
+```typescript
+// API call only after user stops typing
+function GoodSearch() {
+  const [query, setQuery] = useState('')
+  const debouncedQuery = useDebounce(query, 300)
+
+  useEffect(() => {
+    fetchResults(debouncedQuery) // Called once after typing stops
+  }, [debouncedQuery])
+
+  return <input onChange={e => setQuery(e.target.value)} />
+}
+
+// User types "pikachu" = 1 API call
+```
+
+**Savings**: 85% fewer API calls in this example
+
+---
+
+## Choosing the Right Delay
+
+<CardGroup cols={2}>
+  <Card title="100-200ms" icon="gauge-simple-min">
+    **Use for**: Auto-save, real-time validation  
+    **UX**: Feels almost instant, minimal delay  
+    **Trade-off**: Still processes frequently
+  </Card>
+
+  <Card title="300-500ms" icon="gauge">
+    **Use for**: Search inputs, filters  
+    **UX**: Balanced responsiveness  
+    **Trade-off**: Standard choice for most use cases
+  </Card>
+
+  <Card title="500-1000ms" icon="gauge-high">
+    **Use for**: Expensive operations, API rate limits  
+    **UX**: Noticeable delay but acceptable  
+    **Trade-off**: Reduces server load significantly
+  </Card>
+
+  <Card title="1000ms+" icon="gauge-simple-max">
+    **Use for**: Complex calculations, analytics  
+    **UX**: User must pause deliberately  
+    **Trade-off**: Maximum performance savings
+  </Card>
+</CardGroup>
+
+---
+
+## Common Patterns
+
+### Pattern 1: Debounced Search with Clear Button
+
+```typescript
+function Search() {
+  const [query, setQuery] = useState('')
+  const debouncedQuery = useDebounce(query, 300)
+
+  const clear = () => setQuery('')
+
+  return (
+    <div>
+      <input 
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+      />
+      {query && <button onClick={clear}>Clear</button>}
+      <Results query={debouncedQuery} />
+    </div>
+  )
+}
+```
+
+### Pattern 2: Debounce with Minimum Length
+
+```typescript
+function SmartSearch() {
+  const [query, setQuery] = useState('')
+  const debouncedQuery = useDebounce(query, 400)
+
+  useEffect(() => {
+    // Only search if at least 3 characters
+    if (debouncedQuery.length >= 3) {
+      performSearch(debouncedQuery)
+    }
+  }, [debouncedQuery])
+
+  return <input onChange={e => setQuery(e.target.value)} />
+}
+```
+
+### Pattern 3: Debounce Multiple Values
+
+```typescript
+function MultiFilter() {
+  const [name, setName] = useState('')
+  const [type, setType] = useState('')
+  const [region, setRegion] = useState('')
+
+  const debouncedName = useDebounce(name, 300)
+  const debouncedType = useDebounce(type, 300)
+  const debouncedRegion = useDebounce(region, 300)
+
+  useEffect(() => {
+    // Filters only update after all inputs are debounced
+    applyFilters({
+      name: debouncedName,
+      type: debouncedType,
+      region: debouncedRegion
+    })
+  }, [debouncedName, debouncedType, debouncedRegion])
+
+  return (
+    <div>
+      <input onChange={e => setName(e.target.value)} />
+      <input onChange={e => setType(e.target.value)} />
+      <input onChange={e => setRegion(e.target.value)} />
+    </div>
+  )
+}
+```
+
+---
+
+## TypeScript Usage
+
+The hook is fully generic and type-safe:
+
+```typescript
+// String
+const debouncedString = useDebounce<string>('hello', 300)
+
+// Number
+const debouncedNumber = useDebounce<number>(42, 500)
+
+// Object
+interface Filter {
+  name: string
+  types: string[]
+}
+const debouncedFilter = useDebounce<Filter>(
+  { name: 'pikachu', types: ['electric'] },
+  400
+)
+
+// Array
+const debouncedArray = useDebounce<number[]>([1, 2, 3], 200)
+
+// Type inference works automatically
+const debouncedAuto = useDebounce('auto', 300) // Type is string
+```
+
+---
+
+## Related
+
+- [usePokeFilters Hook](/api/hooks/use-poke-filters) - Uses this hook internally for search debouncing
+- [usePaginate Hook](/api/hooks/use-paginate) - Often combined with debounced search

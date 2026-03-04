@@ -1,0 +1,232 @@
+---
+title: 'FavoriteButton'
+description: 'Toggle button for adding/removing Pokemon from favorites'
+icon: 'heart'
+---
+
+## Overview
+
+The `FavoriteButton` component provides a toggle button for adding and removing Pokemon from a user's favorites list. It integrates with Zustand for state management and persists favorites to local storage.
+
+## Import
+
+```tsx
+import { FavoriteButton } from '@/components/pokemon'
+```
+
+## Props
+
+<ParamField path="pokemon" type="PokemonSummary" required>
+  Pokemon data object to be added/removed from favorites
+  
+  ```typescript
+  interface PokemonSummary {
+    id: number
+    name: string
+    types: PokeType['name'][]
+    image: string
+  }
+  ```
+</ParamField>
+
+## Usage Example
+
+```tsx
+import { FavoriteButton } from '@/components/pokemon'
+import { PokemonSummary } from '@/types'
+
+const pokemon: PokemonSummary = {
+  id: 25,
+  name: 'pikachu',
+  types: ['electric'],
+  image: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/25.png'
+}
+
+export default function Example() {
+  return (
+    <div>
+      <h1>Pikachu</h1>
+      <FavoriteButton pokemon={pokemon} />
+    </div>
+  )
+}
+```
+
+## Features
+
+### State Management
+
+Uses Zustand store for favorites management:
+
+```tsx
+const { toggleFavorite } = useFavoriteActions()
+const isFavorite = useIsFavorite(id)
+```
+
+### Dynamic Button State
+
+The button changes appearance and text based on favorite status:
+
+**When NOT favorited:**
+- Default button styling
+- Heart icon
+- "Add to favorites" text
+
+**When favorited:**
+- White background with black text
+- Close/X icon
+- "Remove from favorites" text
+- Bold font weight
+
+### Responsive Width
+
+Adapts to screen size:
+- Full width on mobile (`w-full`)
+- Auto width on desktop (`md:w-fit`)
+
+## Component Structure
+
+```tsx
+export const FavoriteButton = ({ pokemon }: Props) => {
+  const { id } = pokemon
+  const { toggleFavorite } = useFavoriteActions()
+  const handleToggleFavorite = () => toggleFavorite(pokemon)
+  const isFavorite = useIsFavorite(id)
+
+  return (
+    <Button
+      className={`flex items-center justify-center gap-3 w-full md:w-fit ${
+        isFavorite ? 'bg-white! text-black! font-semibold!' : ''
+      }`}
+      onClick={handleToggleFavorite}
+    >
+      {isFavorite ? (
+        <>
+          <CgClose className="text-xl" />
+          <span>Remove from favorites</span>
+        </>
+      ) : (
+        <>
+          <IoHeart className="text-2xl" />
+          <span>Add to favorites</span>
+        </>
+      )}
+    </Button>
+  )
+}
+```
+
+## Zustand Store Integration
+
+### useFavoriteActions
+
+Provides action methods:
+
+```typescript
+const { toggleFavorite } = useFavoriteActions()
+
+// Toggle a Pokemon's favorite status
+toggleFavorite(pokemon: PokemonSummary)
+```
+
+### useIsFavorite
+
+Returns the favorite status of a specific Pokemon:
+
+```typescript
+const isFavorite = useIsFavorite(pokemonId: number)
+// Returns: boolean
+```
+
+## Persistence
+
+Favorites are automatically persisted to local storage through the Zustand store middleware. Changes are immediately synchronized across all instances of the component.
+
+## Icons
+
+Uses React Icons library:
+
+- `IoHeart` - Solid heart icon (from react-icons/io5)
+- `CgClose` - Close/X icon (from react-icons/cg)
+
+## Styling Details
+
+### Base Styles
+```tsx
+className="flex items-center justify-center gap-3 w-full md:w-fit"
+```
+
+### Favorite State Styles
+```tsx
+isFavorite ? 'bg-white! text-black! font-semibold!' : ''
+```
+
+<Note>
+  The `!` suffix in class names (e.g., `bg-white!`) is UnoCSS syntax for `!important`, ensuring these styles override any conflicting styles.
+</Note>
+
+### Icon Sizes
+- Heart icon: `text-2xl`
+- Close icon: `text-xl`
+
+## Accessibility
+
+The button provides clear visual and textual feedback:
+- Descriptive text labels ("Add to favorites" / "Remove from favorites")
+- Icon reinforces the action
+- High contrast when favorited (white background, black text)
+
+## Related Components
+
+- [FavoriteCardButton](/components/favorite-card-button) - Compact version for use within PokemonCard
+- [PokemonCard](/components/pokemon-card) - Uses FavoriteCardButton variant
+
+## Store Hooks
+
+### useFavoriteActions
+
+Location: `@/stores/favorite.store`
+
+Provides methods:
+- `toggleFavorite(pokemon: PokemonSummary)` - Add or remove from favorites
+- `addFavorite(pokemon: PokemonSummary)` - Add to favorites
+- `removeFavorite(id: number)` - Remove from favorites
+- `clearFavorites()` - Remove all favorites
+
+### useIsFavorite
+
+Location: `@/stores/favorite.store`
+
+Signature:
+```typescript
+useIsFavorite(id: number): boolean
+```
+
+Returns `true` if Pokemon with given ID is in favorites, `false` otherwise.
+
+## Example: Building a Favorites Page
+
+```tsx
+import { FavoriteButton } from '@/components/pokemon'
+import { useFavoriteStore } from '@/stores/favorite.store'
+
+export default function FavoritesPage() {
+  const favorites = useFavoriteStore((state) => state.favorites)
+  
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {favorites.map((pokemon) => (
+        <div key={pokemon.id} className="border rounded p-4">
+          <h3>{pokemon.name}</h3>
+          <img src={pokemon.image} alt={pokemon.name} />
+          <FavoriteButton pokemon={pokemon} />
+        </div>
+      ))}
+    </div>
+  )
+}
+```
+
+## Source Location
+
+`/src/components/pokemon/FavoriteButton.tsx:1-38`

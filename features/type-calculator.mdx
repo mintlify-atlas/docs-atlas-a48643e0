@@ -1,0 +1,426 @@
+---
+title: 'Type Effectiveness Calculator'
+description: 'Interactive calculator for analyzing Pokemon type matchups and defensive synergies'
+---
+
+The Type Calculator is a powerful tool for analyzing defensive type effectiveness. Users can select up to two Pokemon types and see all weaknesses, resistances, and immunities for that type combination.
+
+## Overview
+
+The calculator helps players understand:
+- **Weaknesses**: Types that deal increased damage (2x, 4x)
+- **Resistances**: Types that deal reduced damage (0.5x, 0.25x)
+- **Immunities**: Types that deal no damage (0x)
+
+This is essential for team building and understanding defensive synergies in competitive Pokemon.
+
+## Page Structure
+
+The calculator page is located at `/calculator` (`src/app/calculator/page.tsx`):
+
+```typescript page.tsx
+import { TypeCalculator } from '@/components/calculator/TypeCalculator'
+
+export const metadata = {
+  title: 'Type Calculator | Pokenéx',
+  description: 'Analyze defensive synergies and effectiveness for any Pokémon type combination.',
+}
+
+export default function TypeCalculatorPage() {
+  return (
+    <main className="min-h-screen p-6 sm:p-12 pt-16 md:pt-24">
+      <div className="max-w-6xl mx-auto space-y-16">
+        <div className="flex flex-col items-center gap-2 text-center">
+          <h1 className="text-4xl lg:text-7xl font-bold uppercase">
+            Type Calculator
+          </h1>
+          <p className="text-zinc-500 max-w-xl">
+            Analyze defensive synergies and effectiveness for any type combination.
+          </p>
+        </div>
+        <TypeCalculator />
+      </div>
+    </main>
+  )
+}
+```
+
+## TypeCalculator Component
+
+The main calculator component (`src/components/calculator/TypeCalculator.tsx`):
+
+```typescript TypeCalculator.tsx
+'use client'
+
+import { useMemo, useState } from 'react'
+import { getEffectivities } from '@/lib/utils'
+import { PokeType } from '@/types'
+import { TypeSelector } from './TypeSelector'
+import { EffectivityResults } from './EffectivityResults'
+import { RiRefreshLine } from "react-icons/ri"
+
+export const TypeCalculator = () => {
+  const [selectedTypes, setSelectedTypes] = useState<PokeType['name'][]>([])
+  const [isSpinning, setIsSpinning] = useState(false)
+
+  const handleToggle = (type: PokeType['name']) => {
+    setSelectedTypes((prev) => {
+      if (prev.includes(type)) {
+        return prev.filter((t) => t !== type)
+      }
+      if (prev.length >= 2) {
+        return [prev[1], type]  // Replace oldest selection
+      }
+      return [...prev, type]
+    })
+  }
+
+  const resetSelection = () => {
+    if (isSpinning) return
+    setSelectedTypes([])
+    setIsSpinning(true)
+    setTimeout(() => setIsSpinning(false), 600)
+  }
+
+  const effectivities = useMemo(() => {
+    return getEffectivities(selectedTypes)
+  }, [selectedTypes])
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 md:gap-16">
+      <section className="lg:col-span-7 space-y-8">
+        <div className="flex items-center justify-between">
+          <h2>Type Selection</h2>
+          <button onClick={resetSelection} title="Reset selection">
+            <RiRefreshLine 
+              className={`text-[30px] transition-all duration-600 ${
+                isSpinning ? 'rotate-[360deg] scale-110' : 'rotate-0'
+              }`} 
+            />
+          </button>
+        </div>
+        <TypeSelector selectedTypes={selectedTypes} onToggle={handleToggle} />
+      </section>
+
+      <section className="lg:col-span-5 space-y-8">
+        <h2>Effectiveness</h2>
+        <EffectivityResults multipliers={effectivities.multipliers} />
+      </section>
+    </div>
+  )
+}
+```
+
+## Type Selection Logic
+
+The calculator allows selecting up to 2 types with smart replacement:
+
+```typescript
+const handleToggle = (type: PokeType['name']) => {
+  setSelectedTypes((prev) => {
+    // Deselect if already selected
+    if (prev.includes(type)) {
+      return prev.filter((t) => t !== type)
+    }
+    
+    // Replace oldest if already at limit
+    if (prev.length >= 2) {
+      return [prev[1], type]
+    }
+    
+    // Add new selection
+    return [...prev, type]
+  })
+}
+```
+
+<Info>
+  When 2 types are already selected, clicking a third type removes the oldest selection and adds the new one. This creates a smooth FIFO (first-in, first-out) selection experience.
+</Info>
+
+## TypeSelector Component
+
+Displays all 18 Pokemon types as selectable buttons:
+
+```typescript TypeSelector.tsx
+import { ALL_POKEMON_TYPES, POKE_THEMES } from '@/constants'
+import { PokeType } from '@/types'
+
+interface Props {
+  selectedTypes: PokeType['name'][]
+  onToggle: (type: PokeType['name']) => void
+}
+
+export const TypeSelector = ({ selectedTypes, onToggle }: Props) => {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+      {ALL_POKEMON_TYPES.map((type) => {
+        const isSelected = selectedTypes.includes(type)
+        const theme = POKE_THEMES[type] || POKE_THEMES.default
+
+        return (
+          <button
+            key={type}
+            onClick={() => onToggle(type)}
+            className={`px-12 py-1.5 rounded-sm transition-all ${
+              isSelected
+                ? `${theme.bg} ${theme.text}`
+                : 'bg-zinc-900/50 text-zinc-500 hover:bg-zinc-800/50'
+            }`}
+          >
+            <span className="text-lg font-bold uppercase">{type}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+```
+
+## Effectiveness Calculation
+
+The core calculation logic is in `src/lib/utils/pokemon.util.ts`:
+
+```typescript pokemon.util.ts
+import { TYPE_DEFENSE_CHART } from '@/constants'
+import { PokeType } from '@/types'
+
+export const getEffectivities = (types: PokeType['name'][]) => {
+  const damageMultipliers: Record<string, number> = {}
+
+  // Initialize all types with 1x damage
+  Object.keys(TYPE_DEFENSE_CHART).forEach((type) => {
+    damageMultipliers[type] = 1
+  })
+
+  // Calculate cumulative defensive multipliers
+  types.forEach((pokemonType) => {
+    const typeLower = pokemonType.toLowerCase()
+    const defenseRelations = TYPE_DEFENSE_CHART[typeLower]
+
+    if (defenseRelations) {
+      Object.keys(defenseRelations).forEach((attackerType) => {
+        damageMultipliers[attackerType] *= defenseRelations[attackerType]
+      })
+    }
+  })
+
+  // Filter results for UI
+  const weaknesses = Object.keys(damageMultipliers).filter(
+    (t) => damageMultipliers[t] > 1
+  ) as PokeType['name'][]
+
+  const resistances = Object.keys(damageMultipliers).filter(
+    (t) => damageMultipliers[t] < 1 && damageMultipliers[t] > 0
+  ) as PokeType['name'][]
+
+  const immunities = Object.keys(damageMultipliers).filter(
+    (t) => damageMultipliers[t] === 0
+  ) as PokeType['name'][]
+
+  return { weaknesses, resistances, immunities, multipliers: damageMultipliers }
+}
+```
+
+## Type Defense Chart
+
+Type matchups are defined in `src/constants/pokemon.constant.ts`:
+
+```typescript pokemon.constant.ts
+export const TYPE_DEFENSE_CHART: Record<string, Record<string, number>> = {
+  normal: { fighting: 2, ghost: 0 },
+  fire: {
+    water: 2,
+    ground: 2,
+    rock: 2,
+    fire: 0.5,
+    grass: 0.5,
+    ice: 0.5,
+    bug: 0.5,
+    steel: 0.5,
+    fairy: 0.5,
+  },
+  water: { 
+    electric: 2, 
+    grass: 2, 
+    fire: 0.5, 
+    water: 0.5, 
+    ice: 0.5, 
+    steel: 0.5 
+  },
+  // ... all 18 types
+}
+```
+
+The chart maps defensive type relationships:
+- `2` = takes double damage (weak to)
+- `0.5` = takes half damage (resistant to)
+- `0` = takes no damage (immune to)
+
+<Warning>
+  The TYPE_DEFENSE_CHART defines **defensive** relationships, not offensive. A value of `2` means "takes 2x damage from this type", not "deals 2x damage to this type".
+</Warning>
+
+## EffectivityResults Component
+
+Displays the calculated results in organized categories:
+
+```typescript EffectivityResults.tsx
+import { PokeType } from '@/types'
+import { TypeBadge } from '@/components/pokemon/TypeBadge'
+
+interface Props {
+  multipliers: Record<PokeType['name'], number>
+}
+
+export const EffectivityResults = ({ multipliers }: Props) => {
+  const categories = [
+    { label: 'Weaknesses (4x)', value: 4 },
+    { label: 'Weaknesses (2x)', value: 2 },
+    { label: 'Resistances (0.5x)', value: 0.5 },
+    { label: 'Resistances (0.25x)', value: 0.25 },
+    { label: 'Immunities (0x)', value: 0 },
+  ]
+
+  const hasAnyResult = Object.values(multipliers).some(m => m !== 1)
+
+  if (!hasAnyResult) {
+    return (
+      <div className="flex items-center justify-center p-8 border border-zinc-800">
+        <span className="text-zinc-400">Select types to analyze</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-10">
+      {categories.map((cat, catIndex) => {
+        const types = Object.entries(multipliers)
+          .filter(([_, value]) => value === cat.value)
+          .map(([name]) => name as PokeType['name'])
+
+        if (types.length === 0) return null
+
+        return (
+          <div key={cat.label} className="space-y-3">
+            <h3>{cat.label}</h3>
+            <div className="flex flex-wrap gap-2">
+              {types.map((type, typeIndex) => (
+                <div
+                  key={type}
+                  style={{ 
+                    animationDelay: `${(catIndex * 150) + (typeIndex * 50)}ms`,
+                  }}
+                  className="animate-in fade-in zoom-in-95"
+                >
+                  <TypeBadge type={type} multiplier={cat.value} />
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+```
+
+## Dual-Type Calculations
+
+When two types are selected, multipliers are **multiplied together**:
+
+```typescript
+// Example: Water/Ground type
+// Water takes 2x from Electric
+// Ground takes 0x from Electric
+// Result: 2 × 0 = 0 (Immune!)
+
+types.forEach((pokemonType) => {
+  // ...
+  damageMultipliers[attackerType] *= defenseRelations[attackerType]
+})
+```
+
+This creates interesting synergies:
+- **Water/Ground**: Immune to Electric (normally Water's weakness)
+- **Steel/Flying**: Immune to Ground (normally Flying's only weakness neutralized)
+- **Fire/Water**: No common weaknesses or resistances
+
+<CardGroup cols={2}>
+  <Card title="4x Weaknesses" icon="circle-exclamation">
+    When both types share a weakness (e.g., Grass/Flying both weak to Ice).
+  </Card>
+  
+  <Card title="Immunity Synergy" icon="shield">
+    One type's immunity can eliminate the other type's weakness.
+  </Card>
+  
+  <Card title="0.25x Resistances" icon="shield-halved">
+    When both types resist the same attacking type.
+  </Card>
+  
+  <Card title="Neutral Coverage" icon="equals">
+    Multipliers that result in 1x (e.g., 2x × 0.5x = 1x).
+  </Card>
+</CardGroup>
+
+## Staggered Animations
+
+Results animate in with staggered delays:
+
+```typescript
+style={{ 
+  animationDelay: `${(catIndex * 150) + (typeIndex * 50)}ms`,
+}}
+```
+
+- Categories (Weaknesses, Resistances) stagger by 150ms
+- Types within each category stagger by 50ms
+- Creates a smooth cascade effect
+
+## Reset Functionality
+
+The reset button clears selections with a visual spin animation:
+
+```typescript
+const resetSelection = () => {
+  if (isSpinning) return  // Prevent double-click
+  setSelectedTypes([])
+  setIsSpinning(true)
+  setTimeout(() => setIsSpinning(false), 600)
+}
+```
+
+The button has CSS transitions:
+```typescript
+className={`transition-all duration-600 ${
+  isSpinning ? 'rotate-[360deg] scale-110' : 'rotate-0'
+}`}
+```
+
+## Use Cases
+
+<AccordionGroup>
+  <Accordion title="Team Building">
+    Check defensive coverage for your team. Avoid stacking Pokemon with common weaknesses.
+  </Accordion>
+  
+  <Accordion title="Competitive Strategy">
+    Identify which types threaten your Pokemon the most and plan switch-ins accordingly.
+  </Accordion>
+  
+  <Accordion title="Type Synergy Analysis">
+    Discover powerful dual-type combinations with minimal weaknesses.
+  </Accordion>
+  
+  <Accordion title="Learning Tool">
+    Educational resource for new players learning the type matchup system.
+  </Accordion>
+</AccordionGroup>
+
+## Performance Optimizations
+
+- **useMemo**: Results are memoized and only recalculate when selectedTypes changes
+- **Early Return**: Empty state renders immediately if no types selected
+- **Conditional Rendering**: Only categories with results are rendered
+- **Animation Delays**: Calculated once per render, not in a loop

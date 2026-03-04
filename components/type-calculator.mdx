@@ -1,0 +1,260 @@
+---
+title: 'TypeCalculator'
+description: 'Interactive type effectiveness calculator for Pokemon battles'
+icon: 'calculator'
+---
+
+## Overview
+
+The `TypeCalculator` component provides an interactive interface for calculating type effectiveness in Pokemon battles. Users can select up to two types and see defensive effectiveness multipliers in real-time.
+
+## Import
+
+```tsx
+import { TypeCalculator } from '@/components/calculator'
+```
+
+## Props
+
+This component takes no props. All state is managed internally.
+
+## Usage Example
+
+```tsx
+import { TypeCalculator } from '@/components/calculator'
+
+export default function CalculatorPage() {
+  return (
+    <main className="container mx-auto py-8">
+      <h1>Type Effectiveness Calculator</h1>
+      <TypeCalculator />
+    </main>
+  )
+}
+```
+
+## Features
+
+### Type Selection
+
+- Select up to 2 types simultaneously
+- Click any type to toggle selection
+- Selecting a third type automatically removes the first selected type
+- Visual feedback for selected types using type-specific themes
+
+### Reset Functionality
+
+- Animated reset button with 360-degree rotation
+- Clears all selected types
+- Prevents spam-clicking with animation state tracking
+
+### Real-Time Effectiveness Calculation
+
+Uses `useMemo` to efficiently calculate type effectiveness when selections change:
+
+```tsx
+const effectivities = useMemo(() => {
+  return getEffectivities(selectedTypes)
+}, [selectedTypes])
+```
+
+## State Management
+
+### Selected Types
+
+```tsx
+const [selectedTypes, setSelectedTypes] = useState<PokeType['name'][]>([])
+```
+
+Stores an array of 0-2 type names (e.g., `['fire', 'flying']`).
+
+### Reset Animation
+
+```tsx
+const [isSpinning, setIsSpinning] = useState(false)
+```
+
+Controls the rotation animation of the reset button.
+
+## Type Toggle Logic
+
+The `handleToggle` function implements smart type selection:
+
+```tsx
+const handleToggle = (type: PokeType['name']) => {
+  setSelectedTypes((prev) => {
+    // If type is already selected, remove it
+    if (prev.includes(type)) {
+      return prev.filter((t) => t !== type)
+    }
+    // If 2 types already selected, remove first and add new
+    if (prev.length >= 2) {
+      return [prev[1], type]
+    }
+    // Otherwise, add the type
+    return [...prev, type]
+  })
+}
+```
+
+Behavior:
+1. **Type already selected**: Remove it
+2. **2 types already selected**: Replace oldest with new selection (FIFO)
+3. **0-1 types selected**: Add the new type
+
+## Reset Button
+
+The reset button features animated feedback:
+
+```tsx
+const resetSelection = () => {
+  if (isSpinning) return  // Prevent spam
+  setSelectedTypes([])
+  setIsSpinning(true)
+  setTimeout(() => setIsSpinning(false), 600)
+}
+```
+
+### Animation
+- Duration: 600ms
+- Rotation: 360 degrees
+- Easing: cubic-bezier(0.4, 0, 0.2, 1)
+- Scale increase on hover: 110%
+- Color transition: zinc-600 to lime-500
+
+## Component Layout
+
+Two-column responsive grid:
+
+```tsx
+<div className="grid grid-cols-1 lg:grid-cols-12 gap-12 md:gap-16">
+  {/* Left: Type Selection (7 columns on large screens) */}
+  <section className="lg:col-span-7 space-y-8">
+    <div className="flex items-center justify-between gap-4 mb-4">
+      <h2>Type Selection</h2>
+      <button onClick={resetSelection}>Reset</button>
+    </div>
+    <TypeSelector selectedTypes={selectedTypes} onToggle={handleToggle} />
+  </section>
+
+  {/* Right: Effectiveness Results (5 columns on large screens) */}
+  <section className="lg:col-span-5 space-y-8">
+    <h2>Effectiveness</h2>
+    <EffectivityResults multipliers={effectivities.multipliers} />
+  </section>
+</div>
+```
+
+## Effectiveness Calculation
+
+The `getEffectivities` utility function returns:
+
+```typescript
+interface Effectivities {
+  multipliers: {
+    quadruple: string[]     // 4x damage (two weaknesses)
+    double: string[]        // 2x damage
+    normal: string[]        // 1x damage
+    half: string[]          // 0.5x damage
+    quarter: string[]       // 0.25x damage (two resistances)
+    immune: string[]        // 0x damage
+  }
+}
+```
+
+### Example Output
+
+For a Fire/Flying type Pokemon:
+
+```typescript
+{
+  multipliers: {
+    quadruple: ['rock'],              // 4x weak
+    double: ['water', 'electric'],    // 2x weak
+    normal: ['normal', 'poison', ...],
+    half: ['fire', 'fighting', ...],  // 0.5x resistant
+    quarter: ['grass', 'bug'],        // 0.25x resistant
+    immune: ['ground']                // 0x immune
+  }
+}
+```
+
+## Child Components
+
+### TypeSelector
+
+Props:
+- `selectedTypes`: Array of currently selected type names
+- `onToggle`: Callback function when a type is clicked
+
+See [TypeSelector documentation](/components/type-selector) for details.
+
+### EffectivityResults
+
+Props:
+- `multipliers`: Object containing effectiveness categories
+
+Displays grouped type badges organized by damage multiplier.
+
+## Styling
+
+### Section Headers
+```tsx
+className="text-lg font-bold uppercase tracking-[0.3em] text-zinc-500 whitespace-nowrap font-rajdhani"
+```
+
+### Dividers
+```tsx
+className="h-[1px] flex-1 bg-zinc-900"
+```
+
+### Reset Button
+```tsx
+className="group relative text-zinc-600 hover:text-lime-500 transition-colors cursor-pointer p-1"
+```
+
+## Accessibility
+
+- Clear section headings
+- Descriptive button title: "Reset selection"
+- Visual feedback for all interactions
+- Keyboard accessible (inherits from button elements)
+
+## Performance Optimization
+
+Uses `useMemo` to prevent unnecessary recalculations:
+- Only recalculates when `selectedTypes` array changes
+- Prevents expensive effectiveness calculations on every render
+
+## Example Use Cases
+
+### Building a Team
+Check defensive coverage for your Pokemon team by testing different type combinations.
+
+### Battle Strategy
+Determine which Pokemon to send out based on opponent's type combination.
+
+### Learning Type Chart
+Interactive way to learn Pokemon type matchups and memorize the type effectiveness chart.
+
+## Related Components
+
+- [TypeSelector](/components/type-selector) - Type selection grid interface
+- [EffectivityResults](/components/effectivity-results) - Results display component
+
+## Utility Functions
+
+### getEffectivities
+
+Location: `@/lib/utils`
+
+Signature:
+```typescript
+getEffectivities(types: PokeType['name'][]): Effectivities
+```
+
+Calculates defensive type effectiveness for the given type combination.
+
+## Source Location
+
+`/src/components/calculator/TypeCalculator.tsx:1-72`

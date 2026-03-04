@@ -1,0 +1,329 @@
+---
+title: 'TypeSelector'
+description: 'Grid-based type selection interface with visual feedback'
+icon: 'grid-2'
+---
+
+## Overview
+
+The `TypeSelector` component displays all Pokemon types in a responsive grid, allowing users to select/deselect types with visual feedback. It's designed to work with the TypeCalculator but can be used independently.
+
+## Import
+
+```tsx
+import { TypeSelector } from '@/components/calculator'
+```
+
+## Props
+
+<ParamField path="selectedTypes" type="PokeType['name'][]" required>
+  Array of currently selected type names
+  
+  ```typescript
+  // Example: ['fire', 'water']
+  type PokeType['name'] = 
+    | 'normal' | 'fire' | 'water' | 'electric' | 'grass' | 'ice'
+    | 'fighting' | 'poison' | 'ground' | 'flying' | 'psychic' 
+    | 'bug' | 'rock' | 'ghost' | 'dragon' | 'dark' | 'steel' | 'fairy'
+  ```
+</ParamField>
+
+<ParamField path="onToggle" type="(type: PokeType['name']) => void" required>
+  Callback function invoked when a type button is clicked
+  
+  ```typescript
+  const handleToggle = (type: PokeType['name']) => {
+    // Handle type selection/deselection
+  }
+  ```
+</ParamField>
+
+## Usage Example
+
+```tsx
+import { TypeSelector } from '@/components/calculator'
+import { useState } from 'react'
+import { PokeType } from '@/types'
+
+export default function Example() {
+  const [selectedTypes, setSelectedTypes] = useState<PokeType['name'][]>([])
+  
+  const handleToggle = (type: PokeType['name']) => {
+    setSelectedTypes((prev) => {
+      if (prev.includes(type)) {
+        return prev.filter((t) => t !== type)
+      }
+      return [...prev, type]
+    })
+  }
+  
+  return (
+    <div>
+      <h2>Select Pokemon Types</h2>
+      <TypeSelector 
+        selectedTypes={selectedTypes} 
+        onToggle={handleToggle} 
+      />
+      <p>Selected: {selectedTypes.join(', ')}</p>
+    </div>
+  )
+}
+```
+
+## Features
+
+### Type-Based Theming
+
+Each type button uses its corresponding theme from `POKE_THEMES`:
+
+```tsx
+const theme = POKE_THEMES[type] || POKE_THEMES.default
+```
+
+When selected:
+- Background uses `theme.bg` (e.g., `bg-fire-600/20` for fire)
+- Text uses `theme.text` (e.g., `text-fire-400` for fire)
+
+When not selected:
+- Background: `bg-zinc-900/50`
+- Text: `text-zinc-500`
+- Hover: `hover:text-zinc-300 hover:bg-zinc-800/50`
+
+### Responsive Grid
+
+The grid adapts to screen size:
+
+```tsx
+grid-cols-2      // Mobile: 2 columns
+sm:grid-cols-3   // Small: 3 columns  
+lg:grid-cols-5   // Large: 5 columns
+```
+
+With 18 total types, this creates:
+- Mobile: 9 rows × 2 columns
+- Tablet: 6 rows × 3 columns
+- Desktop: 4 rows × 5 columns (with 2 empty cells)
+
+### All Pokemon Types
+
+Displays all 18 official Pokemon types from `ALL_POKEMON_TYPES` constant:
+
+1. Normal
+2. Fire
+3. Water
+4. Electric
+5. Grass
+6. Ice
+7. Fighting
+8. Poison
+9. Ground
+10. Flying
+11. Psychic
+12. Bug
+13. Rock
+14. Ghost
+15. Dragon
+16. Dark
+17. Steel
+18. Fairy
+
+## Component Structure
+
+```tsx
+export const TypeSelector = ({ selectedTypes, onToggle }: Props) => {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+      {ALL_POKEMON_TYPES.map((type) => {
+        const isSelected = selectedTypes.includes(type)
+        const theme = POKE_THEMES[type] || POKE_THEMES.default
+
+        return (
+          <button
+            key={type}
+            onClick={() => onToggle(type)}
+            className={`
+              flex items-center justify-center px-12 py-1.5 rounded-sm 
+              transition-all duration-200 font-rajdhani cursor-pointer
+              ${
+                isSelected
+                  ? `${theme.bg} ${theme.text}`
+                  : `bg-zinc-900/50 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50`
+              }
+            `}
+          >
+            <span className="text-lg md:text-sm font-bold uppercase leading-none">
+              {type}
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+```
+
+## Styling Details
+
+### Button Base Styles
+```tsx
+flex items-center justify-center  // Center content
+px-12 py-1.5                       // Padding
+rounded-sm                         // Slight border radius
+transition-all duration-200        // Smooth transitions
+font-rajdhani                      // Custom font
+cursor-pointer                     // Pointer cursor
+```
+
+### Typography
+```tsx
+text-lg md:text-sm    // Larger on mobile, smaller on desktop
+font-bold             // Bold weight
+uppercase             // All caps
+leading-none          // Tight line height
+```
+
+### State Classes
+
+**Selected state:**
+```tsx
+${theme.bg} ${theme.text}
+// Example for fire: bg-red-600/20 text-red-400
+```
+
+**Default state:**
+```tsx
+bg-zinc-900/50 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50
+```
+
+## Type Theme Examples
+
+### Fire Type (Selected)
+```css
+background: bg-red-600/20
+color: text-red-400
+```
+
+### Water Type (Selected)
+```css
+background: bg-blue-600/20
+color: text-blue-400
+```
+
+### Grass Type (Selected)
+```css
+background: bg-green-600/20
+color: text-green-400
+```
+
+## Accessibility
+
+- Uses semantic `<button>` elements
+- Keyboard navigable (tab through types)
+- Clear visual feedback for hover and selected states
+- High contrast between selected and unselected states
+
+## Integration Example with TypeCalculator
+
+```tsx
+import { TypeSelector } from '@/components/calculator'
+import { useState, useMemo } from 'react'
+import { getEffectivities } from '@/lib/utils'
+
+export default function TypeCalculatorExample() {
+  const [selectedTypes, setSelectedTypes] = useState<PokeType['name'][]>([])
+  
+  const handleToggle = (type: PokeType['name']) => {
+    setSelectedTypes((prev) => {
+      if (prev.includes(type)) {
+        return prev.filter((t) => t !== type)
+      }
+      if (prev.length >= 2) {
+        return [prev[1], type]  // Max 2 types
+      }
+      return [...prev, type]
+    })
+  }
+  
+  const effectivities = useMemo(() => {
+    return getEffectivities(selectedTypes)
+  }, [selectedTypes])
+  
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div>
+        <h2>Select Types (Max 2)</h2>
+        <TypeSelector selectedTypes={selectedTypes} onToggle={handleToggle} />
+      </div>
+      <div>
+        <h2>Effectiveness</h2>
+        <EffectivityResults multipliers={effectivities.multipliers} />
+      </div>
+    </div>
+  )
+}
+```
+
+## Constants Used
+
+### ALL_POKEMON_TYPES
+
+Location: `@/constants`
+
+Array containing all 18 Pokemon type names in a specific order:
+
+```typescript
+export const ALL_POKEMON_TYPES = [
+  'normal', 'fire', 'water', 'electric', 'grass', 'ice',
+  'fighting', 'poison', 'ground', 'flying', 'psychic', 'bug',
+  'rock', 'ghost', 'dragon', 'dark', 'steel', 'fairy'
+] as const
+```
+
+### POKE_THEMES
+
+Location: `@/constants`
+
+Record mapping type names to theme objects:
+
+```typescript
+export const POKE_THEMES: Record<string, TypeTheme> = {
+  fire: { hue: 'red', gradient: 'from-red-500/50', bg: 'bg-red-600/20', ... },
+  water: { hue: 'blue', gradient: 'from-blue-500/50', bg: 'bg-blue-600/20', ... },
+  // ... all 18 types + default
+}
+```
+
+## Related Components
+
+- [TypeCalculator](/components/type-calculator) - Parent component that uses TypeSelector
+- [EffectivityResults](/components/effectivity-results) - Displays calculation results
+- [TypeBadge](/components/type-badge) - Individual type badge component
+
+## Performance Considerations
+
+- Renders all 18 types at once (minimal performance impact)
+- No virtualization needed due to small dataset
+- Efficient re-renders through React's reconciliation
+
+## Customization
+
+You can customize the max selection limit by modifying the toggle handler:
+
+```tsx
+// Allow up to 3 types
+const handleToggle = (type: PokeType['name']) => {
+  setSelectedTypes((prev) => {
+    if (prev.includes(type)) {
+      return prev.filter((t) => t !== type)
+    }
+    if (prev.length >= 3) {  // Changed from 2
+      return [...prev.slice(1), type]
+    }
+    return [...prev, type]
+  })
+}
+```
+
+## Source Location
+
+`/src/components/calculator/TypeSelector.tsx:1-40`

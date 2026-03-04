@@ -1,0 +1,219 @@
+---
+title: 'PokeGallery'
+description: 'Full-featured Pokemon gallery with filtering, sorting, and pagination'
+icon: 'grid'
+---
+
+## Overview
+
+The `PokeGallery` component provides a complete Pokemon browsing experience with search, filtering by type and region, sorting options, view mode toggling (grid/table), and pagination. It manages complex state through custom hooks and Zustand stores.
+
+## Import
+
+```tsx
+import { PokeGallery } from '@/components/pokemon'
+```
+
+## Props
+
+<ParamField path="content" type="PokemonSummary[]" required>
+  Array of Pokemon summary data to display in the gallery
+  
+  ```typescript
+  interface PokemonSummary {
+    id: number
+    name: string
+    types: PokeType['name'][]
+    image: string
+  }
+  ```
+</ParamField>
+
+<ParamField path="emptyMessage" type="string" default="No specimens match your current filters.">
+  Custom message to display when no Pokemon match the current filters (optional)
+</ParamField>
+
+## Usage Example
+
+```tsx
+import { PokeGallery } from '@/components/pokemon'
+import { getAllPokemon } from '@/services/pokemon.service'
+
+export default async function PokemonPage() {
+  const { data: pokemon } = await getAllPokemon()
+  
+  return (
+    <main className="container mx-auto py-8">
+      <h1>Pokemon Gallery</h1>
+      <PokeGallery content={pokemon} />
+    </main>
+  )
+}
+```
+
+## Features
+
+### Search and Filtering
+
+The gallery uses the `usePokeFilters` hook with debouncing (250ms) to provide:
+
+- **Text Search**: Filter Pokemon by name
+- **Region Filter**: Filter by generation/region (Kanto, Johto, etc.)
+- **Type Filter**: Multi-select type filtering
+- **Sort Options**: Multiple sorting criteria
+
+### Pagination
+
+The `usePaginate` hook handles pagination logic:
+- 24 Pokemon per page
+- Next/Previous navigation
+- Direct page selection
+- Automatic page count calculation
+
+### View Modes
+
+Supports two display modes stored in Zustand:
+- **Grid View**: Pokemon cards in a responsive grid layout
+- **Table View**: Compact table format for quick browsing
+
+### Hydration Handling
+
+The component shows a skeleton loader until client-side hydration is complete:
+
+```tsx
+const isHydrated = useHydrated()
+
+if (!isHydrated) return <PokeGallerySkeleton />
+```
+
+## State Management
+
+### Filter State
+
+Managed by `usePokeFilters` hook:
+
+```tsx
+const {
+  list: filteredList,          // Filtered Pokemon array
+  state: filterState,          // Current filter values
+  setSearch,                   // Update search query
+  setRegion,                   // Update region filter
+  setSort,                     // Update sort option
+  toggleType,                  // Toggle type selection
+  clearTypes,                  // Clear all type filters
+} = usePokeFilters(content, { debounce: 250 })
+```
+
+### Pagination State
+
+Managed by `usePaginate` hook:
+
+```tsx
+const {
+  paginated: paginatedList,    // Current page Pokemon
+  current,                     // Current page number
+  pages,                       // Total page count
+  next,                        // Go to next page
+  prev,                        // Go to previous page
+  setCurrent,                  // Set specific page
+} = usePaginate(filteredList, 24)
+```
+
+### View Preference
+
+Stored globally in Zustand:
+
+```tsx
+const view = useTweaksStore((s) => s.view)
+const setView = useTweaksStore((s) => s.setView)
+```
+
+## Component Structure
+
+```tsx
+<section className="flex flex-col gap-8 max-w-7xl min-h-[68vh]">
+  {/* Filter controls */}
+  <FilterBar
+    search={filterState.search}
+    region={filterState.region}
+    selectedTypes={filterState.types}
+    sort={filterState.sort}
+    view={view}
+    onSearch={setSearch}
+    onRegionUpdate={setRegion}
+    onToggleType={toggleType}
+    onClearTypes={clearTypes}
+    onSort={setSort}
+    onViewUpdate={setView}
+  />
+
+  {/* Pokemon display (grid or table) */}
+  {paginatedList.length > 0 ? (
+    view === 'grid' ? (
+      <GridContainer>
+        {paginatedList.map((pokemon) => (
+          <PokemonCard key={pokemon.id} content={pokemon} />
+        ))}
+      </GridContainer>
+    ) : (
+      <PokemonTable content={paginatedList} />
+    )
+  ) : (
+    <div className="col-span-full py-20 text-center">
+      <p className="text-zinc-500 italic">
+        No specimens match your current filters.
+      </p>
+    </div>
+  )}
+
+  {/* Pagination controls */}
+  <PaginationControl
+    current={current}
+    total={pages}
+    onNext={next}
+    onPrev={prev}
+    onPageSelect={setCurrent}
+  />
+</section>
+```
+
+## Performance Considerations
+
+### Debounced Search
+Search input is debounced by 250ms to prevent excessive filtering operations during typing.
+
+### Lazy Rendering
+Only Pokemon on the current page are rendered (24 at a time), improving performance for large datasets.
+
+### Skeleton Loading
+Shows placeholder content during hydration to prevent layout shift.
+
+## Empty States
+
+When no Pokemon match the current filters, the component displays a centered message:
+
+```tsx
+<div className="col-span-full py-20 text-center">
+  <p className="text-zinc-500 italic">
+    No specimens match your current filters.
+  </p>
+</div>
+```
+
+## Related Components
+
+- [PokemonCard](/components/pokemon-card) - Individual card display
+- [FilterBar](/components/filter-bar) - Filter control UI
+- [PaginationControl](/components/pagination-control) - Pagination UI
+- [PokemonTable](/components/pokemon-table) - Table view display
+
+## Custom Hooks Used
+
+- `usePokeFilters` - Filtering and sorting logic
+- `usePaginate` - Pagination logic
+- `useHydrated` - Client-side hydration detection
+- `useTweaksStore` - Global view preference
+
+## Source Location
+
+`/src/components/pokemon/PokeGallery.tsx:1-86`

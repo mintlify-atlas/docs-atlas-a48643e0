@@ -1,0 +1,247 @@
+---
+title: Pokemon Service
+description: Core service layer for fetching and managing Pokemon data from the PokeAPI
+---
+
+The Pokemon Service provides a comprehensive set of functions for retrieving Pokemon data, including detailed information, lists, and evolution chains. All service functions return a `ServiceResponse` wrapper that handles errors gracefully.
+
+## getPokemonDetail
+
+Fetches detailed information about a specific Pokemon by slug or ID.
+
+```typescript
+getPokemonDetail(
+  slug: string,
+  extended?: boolean
+): Promise<ServiceResponse<PokemonDetail>>
+```
+
+### Parameters
+
+<ParamField path="slug" type="string" required>
+  The Pokemon name or numeric ID (e.g., "pikachu" or "25")
+</ParamField>
+
+<ParamField path="extended" type="boolean" default="true">
+  Whether to include extended data like species info, evolution chain, and varieties
+</ParamField>
+
+### Returns
+
+<ResponseField name="data" type="PokemonDetail | null">
+  The adapted Pokemon detail object containing:
+  - `id` (number): Pokemon ID
+  - `name` (string): Pokemon name
+  - `genus` (string): Pokemon genus (e.g., "Mouse")
+  - `types` (PokeType[]): Array of types
+  - `abilities` (object[]): Array of abilities with hidden flag
+  - `description` (string): Flavor text description
+  - `height` (number): Height in meters
+  - `weight` (number): Weight in kilograms
+  - `stats` (PokeStat[]): Base stats array
+  - `evolution` (object | null): Evolution chain reference
+  - `varieties` (PokeVariety[]): Alternative forms
+  - `assets` (object): Sprite URLs for official artwork and home sprites
+</ResponseField>
+
+<ResponseField name="error" type="DisplayError | null">
+  Error information if the request failed, containing:
+  - `message` (string): Human-readable error message
+  - `code` (string | number): Optional error code
+  - `context` (string): Optional context string
+</ResponseField>
+
+### Usage Example
+
+```typescript
+import { getPokemonDetail } from '@/services/pokemon.service'
+
+// Fetch full Pokemon details
+const { data, error } = await getPokemonDetail('pikachu')
+
+if (error) {
+  console.error('Failed to fetch Pokemon:', error.message)
+  return
+}
+
+console.log(data.name) // "pikachu"
+console.log(data.types) // [{ name: "electric", url: "..." }]
+console.log(data.stats) // [{ name: "HP", value: 35 }, ...]
+
+// Fetch without extended data (faster)
+const basic = await getPokemonDetail('25', false)
+```
+
+---
+
+## getPokemonList
+
+Retrieves a simple list of all Pokemon with name and URL references.
+
+```typescript
+getPokemonList(): Promise<ServiceResponse<PokemonList>>
+```
+
+### Returns
+
+<ResponseField name="data" type="PokemonList | null">
+  Array of Pokemon list items, each containing:
+  - `name` (string): Pokemon name
+  - `url` (string): PokeAPI URL reference
+</ResponseField>
+
+<ResponseField name="error" type="DisplayError | null">
+  Error information if the request failed
+</ResponseField>
+
+### Usage Example
+
+```typescript
+import { getPokemonList } from '@/services/pokemon.service'
+
+const { data, error } = await getPokemonList()
+
+if (data) {
+  console.log(`Total Pokemon: ${data.length}`)
+  data.forEach(pokemon => {
+    console.log(pokemon.name) // "bulbasaur", "ivysaur", ...
+  })
+}
+```
+
+---
+
+## getPokemonListGQL
+
+Fetches a list of Pokemon summaries using GraphQL, including ID, name, types, and image.
+
+```typescript
+getPokemonListGQL(): Promise<ServiceResponse<PokemonSummary[]>>
+```
+
+### Returns
+
+<ResponseField name="data" type="PokemonSummary[] | null">
+  Array of Pokemon summaries, each containing:
+  - `id` (number): Pokemon ID
+  - `name` (string): Pokemon name
+  - `types` (string[]): Array of type names
+  - `image` (string): Sprite image URL
+</ResponseField>
+
+<ResponseField name="error" type="DisplayError | null">
+  Error information if the request failed
+</ResponseField>
+
+### Usage Example
+
+```typescript
+import { getPokemonListGQL } from '@/services/pokemon.service'
+
+const { data, error } = await getPokemonListGQL()
+
+if (data) {
+  data.forEach(pokemon => {
+    console.log(`${pokemon.id}: ${pokemon.name}`) // "25: pikachu"
+    console.log(pokemon.types) // ["electric"]
+    console.log(pokemon.image) // "https://..."
+  })
+}
+```
+
+---
+
+## getPokemonDetailList
+
+Retrieves detailed information for all Pokemon. This is an expensive operation that makes multiple API calls.
+
+```typescript
+getPokemonDetailList(): Promise<ServiceResponse<PokemonDetail[]>>
+```
+
+### Returns
+
+<ResponseField name="data" type="PokemonDetail[] | null">
+  Array of full Pokemon detail objects. See `getPokemonDetail` for the structure of each item.
+</ResponseField>
+
+<ResponseField name="error" type="DisplayError | null">
+  Error information if the request failed
+</ResponseField>
+
+### Usage Example
+
+```typescript
+import { getPokemonDetailList } from '@/services/pokemon.service'
+
+// Warning: This will make hundreds of API calls
+const { data, error } = await getPokemonDetailList()
+
+if (data) {
+  console.log(`Loaded ${data.length} Pokemon with full details`)
+  const fireTypes = data.filter(p => 
+    p.types.some(t => t.name === 'fire')
+  )
+}
+```
+
+<Warning>
+This function fetches detailed information for every Pokemon in the list. Use sparingly as it makes hundreds of sequential API calls and can take significant time to complete.
+</Warning>
+
+---
+
+## getEvolutionChain
+
+Fetches the evolution chain for a specific Pokemon.
+
+```typescript
+getEvolutionChain(
+  id: string | number
+): Promise<ServiceResponse<Evolution[]>>
+```
+
+### Parameters
+
+<ParamField path="id" type="string | number" required>
+  The evolution chain ID or Pokemon slug
+</ParamField>
+
+### Returns
+
+<ResponseField name="data" type="Evolution[] | null">
+  Flattened array of evolution steps, each containing:
+  - `id` (number): Pokemon ID
+  - `name` (string): Pokemon name
+  - `sprite` (string): Sprite image URL
+</ResponseField>
+
+<ResponseField name="error" type="DisplayError | null">
+  Error information if the request failed
+</ResponseField>
+
+### Usage Example
+
+```typescript
+import { getEvolutionChain } from '@/services/pokemon.service'
+
+// Using evolution chain ID
+const { data, error } = await getEvolutionChain(1)
+
+if (data) {
+  data.forEach(evolution => {
+    console.log(`${evolution.name} (#${evolution.id})`)
+    // "bulbasaur (#1)"
+    // "ivysaur (#2)"
+    // "venusaur (#3)"
+  })
+}
+```
+
+---
+
+## Related
+
+- [Pokemon Detail Adapter](/api/adapters/pokemon-detail)
+- [Pokemon Summary Adapter](/api/adapters/pokemon-summary)
+- [Favorite Store](/api/stores/favorite-store)

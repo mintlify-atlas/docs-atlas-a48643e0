@@ -1,0 +1,112 @@
+---
+title: 'PokemonCard'
+description: 'Display Pokemon in an interactive card format with type-based theming'
+icon: 'id-card'
+---
+
+## Overview
+
+The `PokemonCard` component displays a Pokemon in a visually appealing card format with type-based gradient backgrounds, hover animations, and an integrated favorite button. It's optimized for performance using React's `memo` API.
+
+## Import
+
+```tsx
+import { PokemonCard } from '@/components/pokemon'
+```
+
+## Props
+
+<ParamField path="content" type="PokemonSummary" required>
+  Pokemon data object containing id, name, types, and image
+  
+  ```typescript
+  interface PokemonSummary {
+    id: number
+    name: string
+    types: PokeType['name'][]  // Array of type names like 'fire', 'water'
+    image: string              // Sprite image URL
+  }
+  ```
+</ParamField>
+
+## Usage Example
+
+```tsx
+import { PokemonCard } from '@/components/pokemon'
+import { PokemonSummary } from '@/types'
+
+const pokemon: PokemonSummary = {
+  id: 25,
+  name: 'pikachu',
+  types: ['electric'],
+  image: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/25.png'
+}
+
+export default function Example() {
+  return <PokemonCard content={pokemon} />
+}
+```
+
+## Features
+
+### Type-Based Theming
+The card automatically applies gradient backgrounds based on the Pokemon's primary type using the `getMostColorfulType` utility and `POKE_THEMES` constant.
+
+### Hover Effects
+- Image scales and translates upward on hover
+- Saturation increases from 80% to 125%
+- Smooth transitions for all interactive states
+
+### Integrated Components
+- **SpriteImage**: Optimized Next.js Image wrapper with theme-based effects
+- **TypeBadge**: Displays type badges with consistent styling
+- **FavoriteCardButton**: Allows users to favorite/unfavorite the Pokemon
+
+### Performance Optimization
+The component is wrapped with `React.memo` to prevent unnecessary re-renders when props haven't changed.
+
+## Implementation Details
+
+### Formatted ID Display
+Pokemon IDs are displayed with leading zeros (e.g., #001, #025, #150):
+
+```tsx
+const formattedId = id.toString().padStart(3, '0')
+// 1 → "001"
+// 25 → "025" 
+// 150 → "150"
+```
+
+### Gradient Calculation
+The component uses `useMemo` to calculate the gradient only when types or ID change:
+
+```tsx
+const { theme, formattedId, gradient } = useMemo(() => {
+  const type = getMostColorfulType(types)
+  const theme = POKE_THEMES[type]
+  const formattedId = id.toString().padStart(3, '0')
+  const gradient = `bg-size-[200%_200%] bg-bottom-right to-50% bg-linear-to-tr ${theme.gradient} to-zinc-900`
+
+  return { formattedId, theme, gradient }
+}, [id, types])
+```
+
+### Link Wrapper
+The entire card is wrapped in a Next.js `Link` component that navigates to `/pokemon/{name}`.
+
+## Styling
+
+The component uses Tailwind CSS with UnoCSS syntax and custom utilities:
+- `font-rajdhani`: Custom font family
+- `bg-size-[200%_200%]`: Custom background size
+- `saturate-80`: Custom saturation filter
+
+## Related Components
+
+- [PokeGallery](/components/poke-gallery) - Displays multiple PokemonCards in a grid
+- [FavoriteButton](/components/favorite-button) - Standalone favorite toggle
+- [TypeBadge](/components/type-badge) - Type display component
+
+## Source Location
+
+`/src/components/pokemon/PokemonCard.tsx:1-71`

@@ -1,0 +1,382 @@
+---
+title: usePokeFilters
+description: React hook for filtering and sorting Pokemon lists with search, region, type, and sort capabilities
+---
+
+The `usePokeFilters` hook provides a comprehensive filtering and sorting system for Pokemon lists, integrating with the global tweaks store and supporting debounced search, region filtering, type filtering, and multiple sort options.
+
+## Signature
+
+```typescript
+usePokeFilters(
+  pokeList: PokemonSummary[],
+  config?: filterConfig
+): FilterResult
+```
+
+### Parameters
+
+<ParamField path="pokeList" type="PokemonSummary[]" required>
+  Array of Pokemon summary objects to filter and sort. Each object should contain:
+  - `id` (number): Pokemon ID
+  - `name` (string): Pokemon name
+  - `types` (string[]): Array of type names
+  - `image` (string): Sprite URL
+</ParamField>
+
+<ParamField path="config" type="filterConfig" default="{ debounce: 0 }">
+  Optional configuration object:
+  - `debounce` (number): Milliseconds to debounce search input (default: 0)
+</ParamField>
+
+### Returns
+
+<ResponseField name="result" type="FilterResult">
+  Object containing filtered list, state, and control functions:
+
+  <Expandable title="FilterResult Structure">
+    <ResponseField name="list" type="PokemonSummary[]">
+      Filtered and sorted Pokemon array based on current filter state
+    </ResponseField>
+
+    <ResponseField name="state" type="object">
+      Current filter state:
+      - `search` (string): Current search query
+      - `region` (RegionName): Selected region or "all"
+      - `types` (string[]): Array of selected type names
+      - `sort` (PokeSort): Current sort mode
+    </ResponseField>
+
+    <ResponseField name="setSearch" type="(query: string) => void">
+      Update search query (debounced based on config)
+    </ResponseField>
+
+    <ResponseField name="setRegion" type="(region: RegionName) => void">
+      Set the active region filter
+    </ResponseField>
+
+    <ResponseField name="setSort" type="(sort: PokeSort) => void">
+      Change sort order
+    </ResponseField>
+
+    <ResponseField name="toggleType" type="(typeName: string) => void">
+      Toggle a type filter on/off
+    </ResponseField>
+
+    <ResponseField name="clearTypes" type="() => void">
+      Clear all type filters
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+## Usage Example
+
+```typescript
+import { usePokeFilters } from '@/hooks/usePokeFilters'
+import { getPokemonListGQL } from '@/services/pokemon.service'
+
+function PokemonList() {
+  const [pokemonData, setPokemonData] = useState<PokemonSummary[]>([])
+  
+  // Apply filters with 300ms debounce on search
+  const {
+    list,
+    state,
+    setSearch,
+    setRegion,
+    setSort,
+    toggleType,
+    clearTypes
+  } = usePokeFilters(pokemonData, { debounce: 300 })
+
+  useEffect(() => {
+    getPokemonListGQL().then(({ data }) => {
+      if (data) setPokemonData(data)
+    })
+  }, [])
+
+  return (
+    <div>
+      <input 
+        value={state.search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search Pokemon..."
+      />
+      
+      <select 
+        value={state.region}
+        onChange={(e) => setRegion(e.target.value as RegionName)}
+      >
+        <option value="all">All Regions</option>
+        <option value="kanto">Kanto</option>
+        <option value="johto">Johto</option>
+      </select>
+
+      <select
+        value={state.sort}
+        onChange={(e) => setSort(e.target.value as PokeSort)}
+      >
+        <option value="id-asc">ID Ascending</option>
+        <option value="id-desc">ID Descending</option>
+        <option value="name-asc">Name A-Z</option>
+        <option value="name-desc">Name Z-A</option>
+      </select>
+
+      <div>
+        {['fire', 'water', 'grass', 'electric'].map(type => (
+          <button
+            key={type}
+            onClick={() => toggleType(type)}
+            className={state.types.includes(type) ? 'active' : ''}
+          >
+            {type}
+          </button>
+        ))}
+        <button onClick={clearTypes}>Clear Types</button>
+      </div>
+
+      <p>Showing {list.length} Pokemon</p>
+      
+      {list.map(pokemon => (
+        <PokemonCard key={pokemon.id} {...pokemon} />
+      ))}
+    </div>
+  )
+}
+```
+
+---
+
+## Filter Behavior
+
+Filters are applied in the following order:
+
+### 1. Search Filter
+
+Matches Pokemon by name or ID (case-insensitive):
+
+```typescript
+if (query !== '') {
+  result = result.filter(({ name, id }) =>
+    name.toLowerCase().includes(query) || 
+    id.toString().includes(query)
+  )
+}
+```
+
+**Examples**:
+- `"pika"` → Matches Pikachu, Pikachu-Libre, etc.
+- `"25"` → Matches Pikachu (ID 25), also 250+ IDs
+- `"char"` → Matches Charizard, Charmeleon, Charmander
+
+### 2. Region Filter
+
+Filters Pokemon by their Pokedex ID range:
+
+```typescript
+if (currentRegion) {
+  const { start, end } = currentRegion
+  result = result.filter(p => p.id >= start && p.id <= end)
+}
+```
+
+**Region Ranges**:
+- **Kanto**: 1-151
+- **Johto**: 152-251
+- **Hoenn**: 252-386
+- **Sinnoh**: 387-493
+- **Unova**: 494-649
+- **Kalos**: 650-721
+- **Alola**: 722-809
+- **Galar**: 810-905
+- **Paldea**: 906+
+
+### 3. Type Filter
+
+Filters Pokemon that have at least one of the selected types:
+
+```typescript
+if (types.length > 0) {
+  result = result.filter(pokemon =>
+    types.some(t => pokemon.types && pokemon.types.includes(t))
+  )
+}
+```
+
+**Behavior**:
+- Multiple types use OR logic (Pokemon must have at least one selected type)
+- Selecting `["fire", "water"]` shows all Fire-type OR Water-type Pokemon
+- Pikachu (Electric) won't show if only Fire and Water are selected
+
+### 4. Sort Order
+
+Sorts the filtered results:
+
+```typescript
+result.sort((a, b) => {
+  if (sort === 'id-asc') return a.id - b.id
+  if (sort === 'id-desc') return b.id - a.id
+  if (sort === 'name-asc') return a.name.localeCompare(b.name)
+  if (sort === 'name-desc') return b.name.localeCompare(a.name)
+  return 0
+})
+```
+
+**Sort Options**:
+- `"id-asc"`: ID ascending (1, 2, 3...)
+- `"id-desc"`: ID descending (905, 904, 903...)
+- `"name-asc"`: Alphabetical A-Z
+- `"name-desc"`: Alphabetical Z-A
+
+---
+
+## Type Toggle Function
+
+The `toggleType` function adds or removes types from the filter:
+
+```typescript
+const toggleType = (typeName: string) => {
+  const isAlreadySelected = types.includes(typeName)
+  const newTypes = isAlreadySelected
+    ? types.filter(t => t !== typeName)  // Remove
+    : [...types, typeName]               // Add
+  setTypes(newTypes)
+}
+```
+
+**Usage**:
+
+```typescript
+// Click once: Add fire type
+toggleType('fire') // types = ['fire']
+
+// Click again: Remove fire type
+toggleType('fire') // types = []
+
+// Multiple types
+toggleType('fire')  // types = ['fire']
+toggleType('water') // types = ['fire', 'water']
+toggleType('fire')  // types = ['water']
+```
+
+---
+
+## Performance Optimization
+
+The hook uses `useMemo` to prevent unnecessary recalculations:
+
+```typescript
+const list = useMemo(() => {
+  // Filter logic here
+}, [pokeList, debSearch, types, sort, region])
+```
+
+**Triggers Recalculation When**:
+- Source `pokeList` changes
+- Debounced search value changes
+- Type filters change
+- Sort order changes
+- Region selection changes
+
+**Debounce Benefits**:
+
+```typescript
+// Without debounce: Filters on every keystroke
+<input onChange={e => setSearch(e.target.value)} />
+
+// With 300ms debounce: Filters after user stops typing
+usePokeFilters(list, { debounce: 300 })
+```
+
+---
+
+## State Persistence
+
+Filter state is managed by `useTweaksStore`, which persists to `sessionStorage`:
+
+- Search query is **not** persisted (resets on refresh)
+- Region, types, and sort **are persisted** across page navigations
+- Page number resets to 1 when filters change
+
+---
+
+## Complete Example
+
+```typescript
+import { usePokeFilters } from '@/hooks/usePokeFilters'
+
+function AdvancedPokemonSearch({ allPokemon }) {
+  const filters = usePokeFilters(allPokemon, { debounce: 300 })
+
+  return (
+    <div>
+      {/* Search */}
+      <input
+        type="text"
+        value={filters.state.search}
+        onChange={e => filters.setSearch(e.target.value)}
+        placeholder="Search by name or ID"
+      />
+
+      {/* Region Filter */}
+      <div>
+        {['kanto', 'johto', 'hoenn', 'sinnoh'].map(region => (
+          <button
+            key={region}
+            onClick={() => filters.setRegion(region)}
+            className={filters.state.region === region ? 'active' : ''}
+          >
+            {region}
+          </button>
+        ))}
+      </div>
+
+      {/* Type Filters */}
+      <div>
+        {['normal', 'fire', 'water', 'electric', 'grass', 'ice'].map(type => (
+          <button
+            key={type}
+            onClick={() => filters.toggleType(type)}
+            className={filters.state.types.includes(type) ? 'active' : ''}
+          >
+            {type}
+          </button>
+        ))}
+        {filters.state.types.length > 0 && (
+          <button onClick={filters.clearTypes}>Clear All</button>
+        )}
+      </div>
+
+      {/* Sort */}
+      <select
+        value={filters.state.sort}
+        onChange={e => filters.setSort(e.target.value)}
+      >
+        <option value="id-asc">Lowest ID First</option>
+        <option value="id-desc">Highest ID First</option>
+        <option value="name-asc">A to Z</option>
+        <option value="name-desc">Z to A</option>
+      </select>
+
+      {/* Results */}
+      <p>{filters.list.length} results</p>
+      <div className="grid">
+        {filters.list.map(pokemon => (
+          <PokemonCard key={pokemon.id} pokemon={pokemon} />
+        ))}
+      </div>
+    </div>
+  )
+}
+```
+
+---
+
+## Related
+
+- [useDebounce Hook](/api/hooks/use-debounce) - Used internally for search debouncing
+- [usePaginate Hook](/api/hooks/use-paginate) - Pair with this for paginated filtered results
+- [Tweaks Store](/api/stores/tweaks-store) - Manages filter state
+- [Pokemon Summary Adapter](/api/adapters/pokemon-summary) - Creates the data structure used by this hook

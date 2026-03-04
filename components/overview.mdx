@@ -1,0 +1,68 @@
+---
+title: 'Component Library Overview'
+description: 'Explore the Poke-Nex React component library for building Pokemon applications'
+icon: 'layer-group'
+---
+
+The Poke-Nex component library provides a comprehensive set of React components for building Pokemon-themed applications. All components are built with TypeScript, support client-side rendering with React hooks, and follow modern React best practices.
+
+## Component Categories
+
+<CardGroup cols={2}>
+  <Card title="Pokemon Components" icon="dragon" href="/components/pokemon-card">
+    Display and interact with Pokemon data including cards, galleries, and detail views
+  </Card>
+  <Card title="Type Calculator" icon="calculator" href="/components/type-calculator">
+    Calculate type effectiveness and manage type selection for Pokemon battles
+  </Card>
+  <Card title="Evolution Chain" icon="arrow-right" href="/components/evolution-chain">
+    Visualize Pokemon evolution chains with special support for Eeveelutions
+  </Card>
+  <Card title="Favorite System" icon="heart" href="/components/favorite-button">
+    Toggle and manage favorite Pokemon with persistent storage
+  </Card>
+</CardGroup>
+
+## Pokemon Display Components
+
+These components handle the display and interaction with Pokemon data:
+
+- **[PokemonCard](/components/pokemon-card)** - Individual Pokemon card with image, types, and favorite button
+- **[PokeGallery](/components/poke-gallery)** - Full-featured gallery with filtering, sorting, and pagination
+- **[PokemonDetailView](/components/pokemon-detail)** - Comprehensive detail view with variety selection and stats
+
+## Type System Components
+
+Calculate and display Pokemon type effectiveness:
+
+- **[TypeCalculator](/components/type-calculator)** - Complete type effectiveness calculator
+- **[TypeSelector](/components/type-selector)** - Type selection interface with visual feedback
+
+## Evolution Components
+
+- **[EvolutionChain](/components/evolution-chain)** - Server-side component for displaying evolution chains
+
+## Interactive Elements
+
+- **[FavoriteButton](/components/favorite-button)** - Toggle favorite status with Zustand store integration
+
+## Design Principles
+
+### Type Safety
+All components are built with TypeScript and use strict type definitions from the `@/types` package.
+
+### Client Components
+Most components use the `'use client'` directive for client-side interactivity, with the exception of `EvolutionChain` which is a server component.
+
+### Theme System
+Components leverage the `POKE_THEMES` constant to provide consistent type-based styling across the application.
+
+### Performance
+Components use React best practices including:
+- `memo` for expensive renders
+- `useMemo` for computed values
+- Efficient state management with Zustand
+
+## Getting Started
+
+Browse the individual component documentation to learn about props, usage examples, and implementation details.

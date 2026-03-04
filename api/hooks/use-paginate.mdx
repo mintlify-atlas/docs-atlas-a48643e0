@@ -1,0 +1,587 @@
+---
+title: usePaginate
+description: React hook for paginating arrays with automatic page management and navigation controls
+---
+
+The `usePaginate` hook provides a complete pagination solution with automatic page management, navigation controls, and integration with the global tweaks store for persistent state.
+
+## Signature
+
+```typescript
+usePaginate<T>(list: T[], limit?: number): PaginationResult<T>
+```
+
+### Parameters
+
+<ParamField path="list" type="T[]" required>
+  Array of items to paginate. Can be any type of data.
+</ParamField>
+
+<ParamField path="limit" type="number" default="20">
+  Number of items per page
+</ParamField>
+
+### Returns
+
+<ResponseField name="result" type="PaginationResult<T>">
+  Object containing paginated data and navigation controls:
+
+  <Expandable title="PaginationResult Structure">
+    <ResponseField name="paginated" type="T[]">
+      Array containing only the items for the current page
+    </ResponseField>
+
+    <ResponseField name="current" type="number">
+      Current page number (1-based index)
+    </ResponseField>
+
+    <ResponseField name="pages" type="number">
+      Total number of pages
+    </ResponseField>
+
+    <ResponseField name="next" type="() => void">
+      Navigate to the next page (capped at last page)
+    </ResponseField>
+
+    <ResponseField name="prev" type="() => void">
+      Navigate to the previous page (capped at page 1)
+    </ResponseField>
+
+    <ResponseField name="setCurrent" type="(page: number) => void">
+      Jump directly to a specific page number
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+## Usage Example
+
+### Basic Pagination
+
+```typescript
+import { usePaginate } from '@/hooks/usePaginate'
+import { useFavoriteStore } from '@/stores/favorite.store'
+
+function PokemonList() {
+  const favorites = useFavoriteStore(state => state.favorites)
+  
+  // Paginate with 12 items per page
+  const {
+    paginated,
+    current,
+    pages,
+    next,
+    prev,
+    setCurrent
+  } = usePaginate(favorites, 12)
+
+  return (
+    <div>
+      <div className="grid">
+        {paginated.map(pokemon => (
+          <PokemonCard key={pokemon.id} {...pokemon} />
+        ))}
+      </div>
+
+      <div className="pagination">
+        <button onClick={prev} disabled={current === 1}>
+          Previous
+        </button>
+        
+        <span>Page {current} of {pages}</span>
+        
+        <button onClick={next} disabled={current === pages}>
+          Next
+        </button>
+      </div>
+    </div>
+  )
+}
+```
+
+---
+
+## Advanced Examples
+
+### With Filtering and Search
+
+```typescript
+import { usePaginate } from '@/hooks/usePaginate'
+import { usePokeFilters } from '@/hooks/usePokeFilters'
+
+function AdvancedPokemonList({ allPokemon }) {
+  // First, filter the list
+  const { list: filtered, setSearch } = usePokeFilters(allPokemon)
+  
+  // Then, paginate the filtered results
+  const { paginated, current, pages, next, prev } = usePaginate(filtered, 20)
+
+  return (
+    <div>
+      <input 
+        onChange={e => setSearch(e.target.value)}
+        placeholder="Search..."
+      />
+      
+      <p>Showing {filtered.length} results</p>
+      
+      <div className="grid">
+        {paginated.map(pokemon => (
+          <PokemonCard key={pokemon.id} {...pokemon} />
+        ))}
+      </div>
+
+      {pages > 1 && (
+        <Pagination 
+          current={current}
+          total={pages}
+          onNext={next}
+          onPrev={prev}
+        />
+      )}
+    </div>
+  )
+}
+```
+
+### Custom Pagination Controls
+
+```typescript
+function CustomPagination({ list }) {
+  const pagination = usePaginate(list, 15)
+  const { current, pages, setCurrent, paginated } = pagination
+
+  // Generate page numbers array
+  const pageNumbers = Array.from({ length: pages }, (_, i) => i + 1)
+
+  return (
+    <div>
+      {/* Content */}
+      <div>
+        {paginated.map(item => (
+          <div key={item.id}>{item.name}</div>
+        ))}
+      </div>
+
+      {/* Custom page number buttons */}
+      <nav>
+        <button 
+          onClick={pagination.prev}
+          disabled={current === 1}
+        >
+          ← Prev
+        </button>
+
+        {pageNumbers.map(num => (
+          <button
+            key={num}
+            onClick={() => setCurrent(num)}
+            className={current === num ? 'active' : ''}
+          >
+            {num}
+          </button>
+        ))}
+
+        <button 
+          onClick={pagination.next}
+          disabled={current === pages}
+        >
+          Next →
+        </button>
+      </nav>
+    </div>
+  )
+}
+```
+
+### Pagination with Page Size Selector
+
+```typescript
+function FlexiblePagination({ items }) {
+  const [pageSize, setPageSize] = useState(20)
+  const { paginated, current, pages, next, prev } = usePaginate(items, pageSize)
+
+  return (
+    <div>
+      {/* Page size selector */}
+      <select 
+        value={pageSize}
+        onChange={e => setPageSize(Number(e.target.value))}
+      >
+        <option value={10}>10 per page</option>
+        <option value={20}>20 per page</option>
+        <option value={50}>50 per page</option>
+        <option value={100}>100 per page</option>
+      </select>
+
+      {/* Content */}
+      <div>
+        {paginated.map(item => (
+          <ItemCard key={item.id} item={item} />
+        ))}
+      </div>
+
+      {/* Navigation */}
+      <PaginationControls {...{ current, pages, next, prev }} />
+    </div>
+  )
+}
+```
+
+---
+
+## How It Works
+
+### Slice Calculation
+
+The hook calculates which items to show using array slicing:
+
+```typescript
+const paginated = useMemo(() => {
+  const activePage = current > pages ? 1 : current
+  const start = (activePage - 1) * limit
+  const end = start + limit
+  
+  return list.slice(start, end)
+}, [list, current, limit, pages])
+```
+
+**Example** (20 items per page):
+- **Page 1**: Items 0-19 (`slice(0, 20)`)
+- **Page 2**: Items 20-39 (`slice(20, 40)`)
+- **Page 3**: Items 40-59 (`slice(40, 60)`)
+
+### Page Count
+
+```typescript
+const pages = Math.ceil(list.length / limit)
+```
+
+**Examples**:
+- 100 items, 20 per page = 5 pages
+- 95 items, 20 per page = 5 pages (last page has 15 items)
+- 20 items, 20 per page = 1 page
+- 0 items = 0 pages
+
+### Auto-Reset on List Change
+
+When the list changes and current page becomes invalid, it auto-resets:
+
+```typescript
+useEffect(() => {
+  if (current > pages && pages > 0) {
+    setCurrent(1)
+  }
+}, [list.length, pages, current, setCurrent])
+```
+
+**Scenario**: User is on page 5, applies a filter, results now fit on 2 pages → automatically jumps to page 1
+
+---
+
+## Navigation Functions
+
+### next()
+
+Navigates to the next page, capped at the last page:
+
+```typescript
+const next = () => setCurrent(Math.min(current + 1, pages))
+```
+
+**Behavior**:
+- On page 3 of 5 → Goes to page 4
+- On page 5 of 5 → Stays on page 5
+- On page 0 (empty list) → Stays on page 0
+
+### prev()
+
+Navigates to the previous page, capped at page 1:
+
+```typescript
+const prev = () => setCurrent(Math.max(current - 1, 1))
+```
+
+**Behavior**:
+- On page 3 of 5 → Goes to page 2
+- On page 1 → Stays on page 1
+
+### setCurrent()
+
+Jump directly to any page:
+
+```typescript
+setCurrent(3) // Jump to page 3
+setCurrent(1) // Jump to first page
+setCurrent(pages) // Jump to last page
+```
+
+---
+
+## State Persistence
+
+The current page is stored in `useTweaksStore` and persists across:
+
+- Component re-renders
+- Route navigation within the same session
+- **Not** persisted: Page refreshes (stored in sessionStorage, not localStorage)
+
+```typescript
+// From the hook
+const current = useTweaksStore(state => state.page)
+const setCurrent = useTweaksStore(state => state.setPage)
+```
+
+**Implications**:
+
+1. Navigate from page 1 → page 3
+2. Click on a Pokemon to view details
+3. Click back button
+4. **Result**: Still on page 3 (state preserved)
+
+---
+
+## Edge Cases Handled
+
+### Empty List
+
+```typescript
+const { paginated, current, pages } = usePaginate([], 20)
+
+// paginated = []
+// current = 1
+// pages = 0
+```
+
+### Current Page Exceeds Total
+
+```typescript
+// User on page 5, list changes to only 2 pages worth
+// Hook automatically resets to page 1
+```
+
+### Invalid Page Numbers
+
+```typescript
+setCurrent(-1)  // next/prev prevent this
+setCurrent(999) // Calculation handles this gracefully
+```
+
+### Single Item
+
+```typescript
+const { paginated, pages } = usePaginate([singleItem], 20)
+
+// paginated = [singleItem]
+// pages = 1
+```
+
+---
+
+## Pagination UI Patterns
+
+### Pattern 1: Simple Prev/Next
+
+```typescript
+<div className="flex gap-2">
+  <button onClick={prev} disabled={current === 1}>
+    ← Previous
+  </button>
+  <span>Page {current} of {pages}</span>
+  <button onClick={next} disabled={current === pages}>
+    Next →
+  </button>
+</div>
+```
+
+### Pattern 2: Page Number Buttons
+
+```typescript
+<div className="flex gap-1">
+  <button onClick={prev}>←</button>
+  {Array.from({ length: pages }, (_, i) => i + 1).map(num => (
+    <button
+      key={num}
+      onClick={() => setCurrent(num)}
+      className={current === num ? 'bg-blue-500' : 'bg-gray-200'}
+    >
+      {num}
+    </button>
+  ))}
+  <button onClick={next}>→</button>
+</div>
+```
+
+### Pattern 3: Truncated Page Numbers
+
+```typescript
+function SmartPagination({ current, pages, setCurrent, next, prev }) {
+  const getPageNumbers = () => {
+    if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1)
+    
+    // Show: 1 ... 4 5 [6] 7 8 ... 20
+    const numbers = [1]
+    if (current > 3) numbers.push('...')
+    
+    for (let i = Math.max(2, current - 2); i <= Math.min(pages - 1, current + 2); i++) {
+      numbers.push(i)
+    }
+    
+    if (current < pages - 2) numbers.push('...')
+    if (pages > 1) numbers.push(pages)
+    
+    return numbers
+  }
+
+  return (
+    <div className="flex gap-1">
+      <button onClick={prev} disabled={current === 1}>←</button>
+      {getPageNumbers().map((num, i) => (
+        typeof num === 'number' ? (
+          <button
+            key={num}
+            onClick={() => setCurrent(num)}
+            className={current === num ? 'active' : ''}
+          >
+            {num}
+          </button>
+        ) : (
+          <span key={i}>...</span>
+        )
+      ))}
+      <button onClick={next} disabled={current === pages}>→</button>
+    </div>
+  )
+}
+```
+
+### Pattern 4: With Item Count
+
+```typescript
+<div>
+  <p>
+    Showing {(current - 1) * limit + 1}-{Math.min(current * limit, list.length)}
+    {' '}of {list.length} items
+  </p>
+  <div className="pagination">
+    <button onClick={prev}>Previous</button>
+    <button onClick={next}>Next</button>
+  </div>
+</div>
+```
+
+---
+
+## Performance Optimization
+
+The hook uses `useMemo` to prevent unnecessary recalculations:
+
+```typescript
+const paginated = useMemo(() => {
+  // Expensive slicing operation only runs when dependencies change
+}, [list, current, limit, pages])
+```
+
+**Recalculates only when**:
+- Source list changes
+- Current page changes
+- Items per page limit changes
+- Total page count changes
+
+---
+
+## Complete Example
+
+```typescript
+'use client'
+
+import { useState, useEffect } from 'react'
+import { usePaginate } from '@/hooks/usePaginate'
+import { usePokeFilters } from '@/hooks/usePokeFilters'
+import { getPokemonListGQL } from '@/services/pokemon.service'
+import type { PokemonSummary } from '@/types'
+
+function PokemonGallery() {
+  const [allPokemon, setAllPokemon] = useState<PokemonSummary[]>([])
+  const [pageSize, setPageSize] = useState(24)
+
+  // Load data
+  useEffect(() => {
+    getPokemonListGQL().then(({ data }) => {
+      if (data) setAllPokemon(data)
+    })
+  }, [])
+
+  // Apply filters
+  const filters = usePokeFilters(allPokemon, { debounce: 300 })
+
+  // Paginate filtered results
+  const pagination = usePaginate(filters.list, pageSize)
+
+  return (
+    <div className="container">
+      {/* Search and filters */}
+      <div className="filters">
+        <input 
+          value={filters.state.search}
+          onChange={e => filters.setSearch(e.target.value)}
+          placeholder="Search Pokemon..."
+        />
+        {/* Type filters, region selector, etc. */}
+      </div>
+
+      {/* Results summary */}
+      <div className="summary">
+        <p>{filters.list.length} results</p>
+        <select
+          value={pageSize}
+          onChange={e => setPageSize(Number(e.target.value))}
+        >
+          <option value={12}>12 per page</option>
+          <option value={24}>24 per page</option>
+          <option value={48}>48 per page</option>
+        </select>
+      </div>
+
+      {/* Pokemon grid */}
+      <div className="grid grid-cols-4 gap-4">
+        {pagination.paginated.map(pokemon => (
+          <PokemonCard key={pokemon.id} pokemon={pokemon} />
+        ))}
+      </div>
+
+      {/* Pagination controls */}
+      {pagination.pages > 1 && (
+        <div className="pagination">
+          <button 
+            onClick={pagination.prev}
+            disabled={pagination.current === 1}
+          >
+            Previous
+          </button>
+          
+          <span>
+            Page {pagination.current} of {pagination.pages}
+          </span>
+          
+          <button 
+            onClick={pagination.next}
+            disabled={pagination.current === pagination.pages}
+          >
+            Next
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+```
+
+---
+
+## Related
+
+- [usePokeFilters Hook](/api/hooks/use-poke-filters) - Filter before paginating
+- [Tweaks Store](/api/stores/tweaks-store) - Stores current page state
+- [Pokemon Service](/api/services/pokemon-service) - Provides data to paginate

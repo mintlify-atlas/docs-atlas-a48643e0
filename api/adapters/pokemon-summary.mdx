@@ -1,0 +1,239 @@
+---
+title: Pokemon Summary Adapter
+description: Transforms GraphQL Pokemon responses into lightweight PokemonSummary objects
+---
+
+The Pokemon Summary Adapter converts GraphQL query results into simplified `PokemonSummary` objects optimized for list views, cards, and filtering operations.
+
+## adaptPokemonSummary
+
+Converts a single Pokemon entry from a GraphQL response into a summary object.
+
+```typescript
+adaptPokemonSummary(
+  gqlPokemon: GQLPokemonSummaryList['data']['pokemon'][number]
+): PokemonSummary
+```
+
+### Parameters
+
+<ParamField path="gqlPokemon" type="object" required>
+  A single Pokemon entry from the GraphQL response containing:
+  - `id` (number): Pokemon ID
+  - `name` (string): Pokemon name
+  - `pokemontypes` (GQLPokemonType[]): Array of type objects with nested `type.name`
+</ParamField>
+
+### Returns
+
+<ResponseField name="result" type="PokemonSummary">
+  Simplified Pokemon summary object:
+
+  <Expandable title="PokemonSummary Structure">
+    <ResponseField name="id" type="number">
+      Pokemon ID number
+    </ResponseField>
+
+    <ResponseField name="name" type="string">
+      Pokemon name in lowercase
+    </ResponseField>
+
+    <ResponseField name="types" type="string[]">
+      Array of type name strings (e.g., `["electric"]`, `["water", "flying"]`)
+    </ResponseField>
+
+    <ResponseField name="image" type="string">
+      Direct URL to the Pokemon's sprite image from the official PokeAPI GitHub repository
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Usage Example
+
+```typescript
+import { adaptPokemonSummary } from '@/adapters/pokemon-summary.adapter'
+import { fetchPokemonListGQL } from '@/lib/api/pokemon.api'
+
+// Fetch data from GraphQL endpoint
+const response = await fetchPokemonListGQL()
+
+// Adapt each Pokemon in the list
+const pokemonList = response.data.pokemon.map(p => 
+  adaptPokemonSummary(p)
+)
+
+console.log(pokemonList[24]) 
+// {
+//   id: 25,
+//   name: "pikachu",
+//   types: ["electric"],
+//   image: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/25.png"
+// }
+```
+
+---
+
+## Data Structure
+
+### Input (GraphQL Response)
+
+The adapter expects data from a GraphQL query with this structure:
+
+```graphql
+query {
+  pokemon {
+    id
+    name
+    pokemontypes {
+      type {
+        name
+      }
+    }
+  }
+}
+```
+
+Example input:
+
+```typescript
+{
+  id: 25,
+  name: "pikachu",
+  pokemontypes: [
+    { type: { name: "electric" } }
+  ]
+}
+```
+
+### Output (PokemonSummary)
+
+The adapter flattens and enhances the data:
+
+```typescript
+{
+  id: 25,
+  name: "pikachu",
+  types: ["electric"],
+  image: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/25.png"
+}
+```
+
+---
+
+## Image URL Generation
+
+The adapter automatically generates sprite image URLs using the Pokemon's ID:
+
+```typescript
+image: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/${id || 132}.png`
+```
+
+**Base URL**: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/`  
+**Fallback ID**: `132` (Ditto) if ID is missing or null
+
+### Image URL Examples
+
+- **Pikachu (ID 25)**: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/25.png`
+- **Charizard (ID 6)**: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/6.png`
+- **Mewtwo (ID 150)**: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/150.png`
+
+---
+
+## Type Transformation
+
+The adapter extracts type names from the nested GraphQL structure:
+
+```typescript
+const types = pokemontypes.map(t => t.type.name as PokemonSummary['types'][number])
+```
+
+### Type Examples
+
+<CardGroup cols={2}>
+  <Card title="Single Type">
+    **Input**: `[{ type: { name: "electric" } }]`  
+    **Output**: `["electric"]`
+  </Card>
+  
+  <Card title="Dual Type">
+    **Input**: `[{ type: { name: "water" } }, { type: { name: "flying" } }]`  
+    **Output**: `["water", "flying"]`
+  </Card>
+</CardGroup>
+
+---
+
+## Use Cases
+
+The `PokemonSummary` format is ideal for:
+
+<AccordionGroup>
+  <Accordion title="List Views">
+    Display Pokemon in grid or list layouts without loading full details:
+    ```tsx
+    {pokemonList.map(pokemon => (
+      <PokemonCard
+        key={pokemon.id}
+        name={pokemon.name}
+        types={pokemon.types}
+        image={pokemon.image}
+      />
+    ))}
+    ```
+  </Accordion>
+
+  <Accordion title="Filtering & Search">
+    Lightweight objects for fast filtering operations:
+    ```typescript
+    const electricTypes = pokemonList.filter(p => 
+      p.types.includes('electric')
+    )
+    
+    const searchResults = pokemonList.filter(p =>
+      p.name.includes(query.toLowerCase())
+    )
+    ```
+  </Accordion>
+
+  <Accordion title="Favorites Storage">
+    Minimal data structure for localStorage/sessionStorage:
+    ```typescript
+    // Store only essential data
+    localStorage.setItem(
+      'favorites',
+      JSON.stringify(favoritePokemon) // Array of PokemonSummary
+    )
+    ```
+  </Accordion>
+
+  <Accordion title="Initial Page Load">
+    Fast initial load with summary data before fetching full details:
+    ```typescript
+    // Quick list view
+    const summaries = await getPokemonListGQL()
+    
+    // Load details on demand
+    const details = await getPokemonDetail(pokemon.name)
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Performance Benefits
+
+Using `PokemonSummary` instead of `PokemonDetail` provides significant advantages:
+
+- **Smaller payload**: ~100 bytes vs ~2KB per Pokemon
+- **Faster parsing**: Simple flat structure vs nested objects
+- **Reduced memory**: Ideal for lists of hundreds of Pokemon
+- **GraphQL optimized**: Single query returns all needed data
+
+---
+
+## Related
+
+- [Pokemon Service](/api/services/pokemon-service) - Uses this adapter in `getPokemonListGQL()`
+- [Pokemon Detail Adapter](/api/adapters/pokemon-detail) - For full Pokemon data
+- [usePokeFilters Hook](/api/hooks/use-poke-filters) - Filters arrays of `PokemonSummary`
+- [Favorite Store](/api/stores/favorite-store) - Stores `PokemonSummary` objects

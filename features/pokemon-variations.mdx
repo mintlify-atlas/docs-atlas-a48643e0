@@ -1,0 +1,418 @@
+---
+title: 'Pokemon Variations & Forms'
+description: 'Support for alternate forms, regional variants, and mega evolutions with dynamic theming'
+---
+
+Poke-Nex supports Pokemon variations including alternate forms (e.g., Alolan forms), mega evolutions, and gigantamax forms. The system dynamically adapts the UI theme based on the selected variety's type.
+
+## Data Structure
+
+Pokemon varieties are defined in the `PokemonDetail` type:
+
+```typescript types.ts
+interface PokemonDetail {
+  id: number
+  name: string
+  types: PokeType[]
+  // ... other base properties
+  varieties: PokeVariety[]
+}
+
+interface PokeVariety {
+  name: string
+  isDefault: boolean
+  pokemonId: number
+  types: PokeType[]
+  stats: PokeStat[]
+  abilities: PokeAbility[]
+  weight: number
+  height: number
+  genus: string
+  description: string
+}
+```
+
+## Adapter Implementation
+
+Varieties are mapped from the API response in `src/adapters/pokemon-detail.adapter.ts`:
+
+```typescript pokemon-detail.adapter.ts
+import { ApiPokemonResponse, PokemonDetail, PokeVariety } from '@/types'
+
+export const adaptPokemon = ({
+  id,
+  name,
+  types,
+  stats,
+  abilities,
+  varieties: apiVarieties,
+  // ... other fields
+}: ApiPokemonResponse): PokemonDetail => {
+  const varieties = mapVarieties(apiVarieties || [], genus, description)
+
+  return {
+    id,
+    name,
+    types: mapTypes(types),
+    varieties,
+    // ... other properties
+  }
+}
+
+const mapVarieties = (
+  apiVarieties: NonNullable<ApiPokemonResponse['varieties']>,
+  genus: string,
+  description: string
+) => {
+  return apiVarieties.map((variety) => {
+    const {
+      is_default,
+      pokemon,
+      types,
+      stats,
+      abilities,
+      weight = 0,
+      height = 0,
+    } = variety
+    
+    const pokemonId = distillEvolutionChainId(pokemon.url)
+    
+    return {
+      name: pokemon.name.replace(/-/g, ' '),
+      isDefault: is_default,
+      pokemonId,
+      types: mapTypes(types || []),
+      stats: mapStats(stats || []),
+      abilities: mapAbilities(abilities || []),
+      weight: weight / 10,
+      height: height / 10,
+      genus,
+      description,
+    }
+  })
+}
+```
+
+<Info>
+  The adapter converts API snake_case to camelCase and normalizes variety names by replacing hyphens with spaces (e.g., "pikachu-gmax" becomes "pikachu gmax").
+</Info>
+
+## State Management
+
+Variety selection is managed with local React state in the `PokemonDetailView` component:
+
+```typescript PokemonDetailView.tsx
+'use client'
+
+import { useState } from 'react'
+import { PokemonDetail, PokeVariety } from '@/types'
+import { POKE_THEMES } from '@/constants'
+import { getMostColorfulType } from '@/lib/utils'
+
+export const PokemonDetailView = ({ data }: { data: PokemonDetail }) => {
+  const [isShiny, setIsShiny] = useState<boolean>(false)
+  const [selectedVariety, setSelectedVariety] = useState<PokeVariety>(
+    data.varieties.find((variety) => variety.isDefault) || data.varieties[0]
+  )
+
+  const currentTypes =
+    selectedVariety.types.length > 0 ? selectedVariety.types : data.types
+  const type = getMostColorfulType(currentTypes.map((t) => t.name))
+  const theme = POKE_THEMES[type]
+
+  return (
+    <>
+      <DetailHero
+        data={data}
+        selectedVariety={selectedVariety}
+        isShiny={isShiny}
+        onSelectVariety={setSelectedVariety}
+        onToggleShiny={setIsShiny}
+        theme={theme}
+        currentTypes={currentTypes}
+      />
+      <DetailBento data={data} currentVariety={selectedVariety} />
+      <DetailStats hue={theme?.hue} stats={selectedVariety.stats} />
+    </>
+  )
+}
+```
+
+## Dynamic Theme System
+
+The UI theme adapts based on the selected variety's type:
+
+```typescript
+const currentTypes =
+  selectedVariety.types.length > 0 ? selectedVariety.types : data.types
+const type = getMostColorfulType(currentTypes.map((t) => t.name))
+const theme = POKE_THEMES[type]
+```
+
+### getMostColorfulType Utility
+
+This utility selects the most visually appealing type for theming:
+
+```typescript pokemon.util.ts
+export const getMostColorfulType = (
+  types: PokeType['name'][]
+): PokeType['name'] => {
+  if (!types) return 'normal'
+
+  if (types.length > 1) {
+    const isGrayType =
+      types[0] === 'normal' || types[0] === 'rock' || types[0] === 'steel'
+
+    if (isGrayType) return types[1]
+  }
+  return types[0]
+}
+```
+
+<Note>
+  For dual-type Pokemon, if the primary type is "gray" (normal/rock/steel), the secondary type is used for theming. This ensures vibrant UI colors.
+</Note>
+
+## VarietyControls Component
+
+The variety selector and shiny toggle are in `src/components/pokemon/VarietyControls.tsx`:
+
+```typescript VarietyControls.tsx
+'use client'
+
+import { TypeTheme } from '@/constants'
+import { PokeVariety } from '@/types'
+import { PiStarFourFill } from 'react-icons/pi'
+import { CustomSelect } from '../ui'
+
+interface VarietyControlsProps {
+  varieties: PokeVariety[]
+  selectedVariety: PokeVariety
+  onSelectVariety: (variety: PokeVariety) => void
+  isShiny: boolean
+  onToggleShiny: (shiny: boolean) => void
+  theme: TypeTheme
+}
+
+export const VarietyControls = ({
+  varieties,
+  selectedVariety,
+  onSelectVariety,
+  isShiny,
+  onToggleShiny,
+  theme,
+}: VarietyControlsProps) => {
+  const varietyOptions = varieties.map((variety) => ({
+    label: variety.name,
+    value: variety,
+  }))
+
+  return (
+    <div className="flex flex-col-reverse sm:flex-row items-center gap-3">
+      {/* Variety Selector */}
+      {varieties.length > 1 && (
+        <CustomSelect
+          className="w-full sm:w-80"
+          options={varietyOptions}
+          value={selectedVariety}
+          onSelect={onSelectVariety}
+        />
+      )}
+
+      {/* Vertical Divider */}
+      {varieties.length > 1 && (
+        <div className="hidden sm:block w-px h-8 bg-zinc-800" />
+      )}
+
+      {/* Shiny Toggle */}
+      <div className="flex items-center gap-1 w-full sm:w-auto h-10.5 p-1 rounded-md bg-zinc-800/50">
+        <button
+          onClick={() => onToggleShiny(false)}
+          className={`flex-1 px-4 py-1.5 rounded-sm font-bold ${
+            !isShiny
+              ? 'bg-zinc-300 text-zinc-900'
+              : 'text-zinc-500 hover:text-zinc-100'
+          }`}
+        >
+          DEFAULT
+        </button>
+        <button
+          onClick={() => onToggleShiny(true)}
+          className={`flex-1 flex items-center gap-1.5 px-4 py-1.5 rounded-sm font-bold ${
+            isShiny
+              ? `${theme.bg} ${theme.text}`
+              : 'text-zinc-500 hover:text-zinc-300'
+          }`}
+        >
+          <PiStarFourFill />
+          SHINY
+        </button>
+      </div>
+    </div>
+  )
+}
+```
+
+## Theme Application
+
+The `TypeTheme` interface defines UI color schemes:
+
+```typescript style.constant.ts
+export interface TypeTheme {
+  hue: string          // Base color name (e.g., 'red', 'blue')
+  gradient: string     // Gradient class
+  bg: string          // Background class
+  text: string        // Text color class
+  border: string      // Border color class
+  hover: string       // Hover state class
+  glow: string        // Glow/shadow class
+}
+
+export const POKE_THEMES: Record<string, TypeTheme> = {
+  fire: {
+    hue: 'red',
+    gradient: 'from-red-500/50',
+    bg: 'bg-red-600/20',
+    text: 'text-red-400',
+    border: 'border-red-500/50',
+    hover: 'hover:bg-red-500/30',
+    glow: 'drop-shadow-[0_0_12px] drop-shadow-red-500/30',
+  },
+  water: {
+    hue: 'blue',
+    gradient: 'from-blue-500/50',
+    bg: 'bg-blue-600/20',
+    text: 'text-blue-400',
+    border: 'border-blue-500/50',
+    hover: 'hover:bg-blue-500/30',
+    glow: 'drop-shadow-[0_0_12px] drop-shadow-blue-500/30',
+  },
+  // ... 18 type themes total
+}
+```
+
+## Variety Examples
+
+<CardGroup cols={2}>
+  <Card title="Alolan Forms" icon="mountains">
+    Regional variants like Alolan Vulpix (Ice type) vs normal Vulpix (Fire type). The theme switches from red to cyan when selecting the Alolan form.
+  </Card>
+  
+  <Card title="Mega Evolutions" icon="bolt">
+    Pokemon like Charizard have multiple mega evolutions (X and Y) with different types and stats.
+  </Card>
+  
+  <Card title="Gigantamax" icon="up-right-and-down-left-from-center">
+    G-Max forms like Pikachu have unique appearances but maintain their base typing.
+  </Card>
+  
+  <Card title="Gender Differences" icon="venus-mars">
+    Some Pokemon like Meowstic have drastically different appearances and stats based on gender.
+  </Card>
+</CardGroup>
+
+## Default Variety Selection
+
+The component initializes with the default variety:
+
+```typescript
+const [selectedVariety, setSelectedVariety] = useState<PokeVariety>(
+  data.varieties.find((variety) => variety.isDefault) || data.varieties[0]
+)
+```
+
+This ensures the canonical form loads first, with alternatives accessible via the selector.
+
+## Stats & Abilities Per Variety
+
+Each variety can have different stats and abilities:
+
+```typescript
+interface PokeVariety {
+  stats: PokeStat[]        // Different base stats
+  abilities: PokeAbility[] // Different ability pools
+  types: PokeType[]        // Can change types entirely
+}
+```
+
+For example:
+- **Meowstic-M**: Prankster ability, offensive stats
+- **Meowstic-F**: Competitive ability, defensive stats
+
+## Image Handling
+
+While varieties have different `pokemonId` values, image URLs are constructed dynamically:
+
+```typescript
+const imageUrl = isShiny
+  ? data.assets.home.shiny
+  : data.assets.home.default
+```
+
+The API provides both default and shiny sprites for each variety.
+
+## Responsive Design
+
+The variety controls adapt to screen size:
+
+```typescript
+<div className="flex flex-col-reverse sm:flex-row items-center gap-3">
+  {/* Selector first on mobile, second on desktop */}
+  {varieties.length > 1 && <CustomSelect />}
+  
+  {/* Divider only visible on desktop */}
+  {varieties.length > 1 && (
+    <div className="hidden sm:block w-px h-8 bg-zinc-800" />
+  )}
+  
+  {/* Shiny toggle */}
+  <div className="w-full sm:w-auto">...</div>
+</div>
+```
+
+## Conditional Rendering
+
+The variety selector only renders when multiple varieties exist:
+
+```typescript
+{varieties.length > 1 && (
+  <CustomSelect
+    options={varietyOptions}
+    value={selectedVariety}
+    onSelect={onSelectVariety}
+  />
+)}
+```
+
+Most Pokemon only have one variety, so the selector is hidden for them.
+
+## Theme Reactivity
+
+When a variety with different types is selected:
+
+1. `selectedVariety` state updates
+2. `currentTypes` is recalculated from the new variety
+3. `getMostColorfulType()` determines the primary type
+4. `theme` is looked up from `POKE_THEMES`
+5. All themed components receive the new theme
+
+This happens **reactively** - the entire UI updates instantly:
+- Background gradients
+- Text colors
+- Border colors
+- Glow effects
+- Button states
+
+<Warning>
+  Changing varieties can completely transform the page theme. For example, switching from Charizard (Fire/Flying - red theme) to Mega Charizard X (Fire/Dragon - red theme) to Mega Charizard Y (Fire/Flying - red theme) keeps the same theme, but switching to an Alolan form would change the entire color scheme.
+</Warning>
+
+## Future Enhancements
+
+Potential improvements to the variety system:
+
+- **Form Images**: Different images for each variety beyond shiny/default
+- **Transition Animations**: Smooth color transitions when changing varieties
+- **Variety Comparison**: Side-by-side stat comparison between forms
+- **Form-Specific Moves**: Display moves unique to certain forms
+- **Type Change Indicators**: Visual indicator when a variety changes types

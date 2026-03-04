@@ -1,0 +1,244 @@
+---
+title: 'EvolutionChain'
+description: 'Server-side component for displaying Pokemon evolution chains'
+icon: 'arrow-progress'
+---
+
+## Overview
+
+The `EvolutionChain` is a **server component** that fetches and displays Pokemon evolution chains. It includes special handling for Eevee's multiple evolutions (Eeveelutions) with a unique layout.
+
+<Note>
+  This is a React Server Component and must be used in server-side contexts. It uses `async/await` to fetch data during render.
+</Note>
+
+## Import
+
+```tsx
+import { EvolutionChain } from '@/components/pokemon'
+```
+
+## Props
+
+<ParamField path="id" type="string | number">
+  Evolution chain ID (optional). If not provided, the component returns null.
+</ParamField>
+
+<ParamField path="theme" type="TypeTheme" required>
+  Theme object for styling based on Pokemon type
+  
+  ```typescript
+  interface TypeTheme {
+    hue: string
+    gradient: string
+    bg: string
+    text: string
+    border: string
+    hover: string
+    glow: string
+  }
+  ```
+</ParamField>
+
+## Usage Example
+
+```tsx
+import { EvolutionChain } from '@/components/pokemon'
+import { POKE_THEMES } from '@/constants'
+import { getPokemonByName } from '@/services/pokemon.service'
+
+export default async function PokemonPage({ 
+  params 
+}: { 
+  params: { name: string } 
+}) {
+  const { data: pokemon } = await getPokemonByName(params.name)
+  const theme = POKE_THEMES[pokemon.types[0].name]
+  
+  return (
+    <div>
+      <h1>{pokemon.name}</h1>
+      {pokemon.evolution && (
+        <EvolutionChain 
+          id={pokemon.evolution.id} 
+          theme={theme}
+        />
+      )}
+    </div>
+  )
+}
+```
+
+## Features
+
+### Server-Side Data Fetching
+
+The component fetches evolution chain data during server-side rendering:
+
+```tsx
+export const EvolutionChain = async ({ id, theme }: Props) => {
+  if (!id) return null
+  const { data: evolutionChain, error } = await getEvolutionChain(id)
+  
+  if (error && error.code != 404) throw new Error(JSON.stringify(error))
+  if (!evolutionChain) return null
+  // ...
+}
+```
+
+### Eeveelution Special Layout
+
+Detects Eevee and uses a special grid layout for its multiple evolutions:
+
+```tsx
+const isEevee = evolutionChain[0].name === 'eevee'
+```
+
+For Eevee:
+- Shows Eevee on the left
+- Displays all 8 Eeveelutions in a responsive grid (3-4 columns)
+- Uses directional chevron arrows
+
+For normal evolution chains:
+- Linear horizontal layout
+- Chevron arrows between stages
+- Responsive wrapping on mobile
+
+### Error Handling
+
+Gracefully handles missing or errored evolution chains:
+- Returns `null` if no ID provided
+- Returns `null` for 404 errors (Pokemon without evolutions)
+- Throws error for other error types
+
+## Evolution Data Structure
+
+```typescript
+interface Evolution {
+  id: number      // Pokedex number
+  name: string    // Pokemon name
+  sprite: string  // Image URL
+}
+```
+
+Example evolution chain array:
+```tsx
+[
+  { id: 1, name: 'bulbasaur', sprite: '...' },
+  { id: 2, name: 'ivysaur', sprite: '...' },
+  { id: 3, name: 'venusaur', sprite: '...' }
+]
+```
+
+## Component Structure
+
+### Normal Evolution Layout
+
+```tsx
+<div className="flex flex-col lg:flex-row flex-wrap items-center justify-center gap-0 lg:gap-4">
+  {evolutionChain.map((step, index) => (
+    <div className="flex flex-col lg:flex-row items-center gap-4" key={step.id}>
+      <EvolutionStepCard data={step} theme={theme} />
+      {index < evolutionChain.length - 1 && (
+        <BiChevronRight className={`text-4xl rotate-90 lg:rotate-0 ${theme?.text} opacity-30`} />
+      )}
+    </div>
+  ))}
+</div>
+```
+
+### Eeveelution Layout
+
+```tsx
+<>
+  <EvolutionStepCard data={evolutionChain[0]} theme={theme} />
+  <div className="hidden lg:block">
+    <BiChevronRight className={`text-5xl ${theme?.text} opacity-30`} />
+  </div>
+  <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 gap-4">
+    {evolutionChain.slice(1).map((step) => (
+      <EvolutionStepCard key={step.id} data={step} theme={theme} />
+    ))}
+  </div>
+</>
+```
+
+## EvolutionStepCard
+
+Internal component that renders each evolution stage:
+
+### Features
+- Clickable link to Pokemon detail page
+- Hover effects with scale and glow
+- Formatted Pokedex number with leading zeros
+- Responsive image sizing
+- Theme-based glow effect on hover
+
+### Structure
+
+```tsx
+<div className="group relative flex flex-col items-center gap-4">
+  <Link href={`/pokemon/${name || id}`}>
+    <div className="relative grid place-items-center rounded-full">
+      <span className={`absolute inset-0 block rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-2xl -z-10 ${theme.bg}`} />
+      <div className="relative aspect-square w-40 transition-transform duration-300 group-hover:scale-110">
+        <Image src={sprite} alt={name + ' image'} fill />
+      </div>
+    </div>
+  </Link>
+  <div className="flex flex-col items-center">
+    <span className="font-rajdhani text-2xl uppercase">{name}</span>
+    <span className="font-rajdhani text-md text-white/40">
+      N° {id.toString().padStart(4, '0')}
+    </span>
+  </div>
+</div>
+```
+
+## Responsive Behavior
+
+### Mobile (< 1024px)
+- Vertical stack layout
+- Chevron arrows rotate 90 degrees
+- Single column for Eeveelutions
+
+### Desktop (>= 1024px)
+- Horizontal layout
+- Regular chevron orientation
+- 3-4 column grid for Eeveelutions
+
+## Styling Features
+
+### Theme Integration
+- Chevron arrows use `theme.text` color
+- Glow effects use `theme.bg` color
+- Consistent opacity levels (30% for arrows, 60% for text)
+
+### Animations
+- Card hover: scale-110 transform (300ms duration)
+- Glow effect: fade-in opacity transition (500ms duration)
+- Text color transition on hover
+
+### Typography
+- Rajdhani font for consistency
+- Uppercase text for Pokemon names
+- Letter-spacing on section titles
+
+## Related Components
+
+- [PokemonDetailView](/components/pokemon-detail) - Parent component that uses EvolutionChain
+- [DetailBento](/components/detail-bento) - Alternative way to display evolution data
+
+## API Integration
+
+Uses the `getEvolutionChain` service function:
+
+```tsx
+import { getEvolutionChain } from '@/services/pokemon.service'
+
+const { data: evolutionChain, error } = await getEvolutionChain(id)
+```
+
+## Source Location
+
+`/src/components/pokemon/EvolutionChain.tsx:1-107`

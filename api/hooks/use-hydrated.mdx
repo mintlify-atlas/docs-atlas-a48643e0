@@ -1,0 +1,408 @@
+---
+title: useHydrated
+description: React hook to safely detect when a component has mounted on the client side
+---
+
+The `useHydrated` hook provides a simple way to determine if a component has fully hydrated on the client side. This is essential for Next.js applications to prevent hydration mismatches when using browser APIs or storage.
+
+## Signature
+
+```typescript
+useHydrated(): boolean
+```
+
+### Returns
+
+<ResponseField name="hydrated" type="boolean">
+  - `false` during SSR (Server-Side Rendering) and initial render
+  - `true` after the component has mounted on the client
+</ResponseField>
+
+---
+
+## Usage Example
+
+### Basic Usage
+
+```typescript
+'use client'
+
+import { useHydrated } from '@/hooks/useHydrated'
+
+function UserGreeting() {
+  const hydrated = useHydrated()
+
+  if (!hydrated) {
+    return <div>Loading...</div>
+  }
+
+  // Safe to use browser APIs now
+  const userName = localStorage.getItem('userName')
+
+  return <div>Welcome back, {userName}!</div>
+}
+```
+
+---
+
+## Why Use This Hook?
+
+### Problem: Hydration Mismatches
+
+Next.js pre-renders components on the server, but browser APIs like `localStorage`, `sessionStorage`, and `window` don't exist on the server:
+
+```typescript
+// This will FAIL on server
+function BadComponent() {
+  const theme = localStorage.getItem('theme') // Error: localStorage is not defined
+  return <div className={theme}>Content</div>
+}
+```
+
+### Solution: Wait for Hydration
+
+```typescript
+// This works correctly
+function GoodComponent() {
+  const hydrated = useHydrated()
+  const [theme, setTheme] = useState('light')
+
+  useEffect(() => {
+    if (hydrated) {
+      const saved = localStorage.getItem('theme')
+      if (saved) setTheme(saved)
+    }
+  }, [hydrated])
+
+  return <div className={theme}>Content</div>
+}
+```
+
+---
+
+## Common Use Cases
+
+### 1. LocalStorage/SessionStorage Access
+
+```typescript
+function FavoritesList() {
+  const hydrated = useHydrated()
+  const [favorites, setFavorites] = useState<string[]>([])
+
+  useEffect(() => {
+    if (hydrated) {
+      const stored = localStorage.getItem('favorites')
+      if (stored) {
+        setFavorites(JSON.parse(stored))
+      }
+    }
+  }, [hydrated])
+
+  if (!hydrated) {
+    return <div>Loading favorites...</div>
+  }
+
+  return (
+    <ul>
+      {favorites.map(fav => <li key={fav}>{fav}</li>)}
+    </ul>
+  )
+}
+```
+
+### 2. Window Object Access
+
+```typescript
+function WindowSize() {
+  const hydrated = useHydrated()
+  const [size, setSize] = useState({ width: 0, height: 0 })
+
+  useEffect(() => {
+    if (hydrated) {
+      const updateSize = () => {
+        setSize({
+          width: window.innerWidth,
+          height: window.innerHeight
+        })
+      }
+      
+      updateSize()
+      window.addEventListener('resize', updateSize)
+      return () => window.removeEventListener('resize', updateSize)
+    }
+  }, [hydrated])
+
+  if (!hydrated) return null
+
+  return <div>{size.width} x {size.height}</div>
+}
+```
+
+### 3. User Preferences from Storage
+
+```typescript
+function ThemeProvider({ children }) {
+  const hydrated = useHydrated()
+  const [theme, setTheme] = useState('system')
+
+  useEffect(() => {
+    if (hydrated) {
+      const savedTheme = localStorage.getItem('theme') || 'system'
+      setTheme(savedTheme)
+      document.documentElement.setAttribute('data-theme', savedTheme)
+    }
+  }, [hydrated])
+
+  // Prevent flash of wrong theme
+  if (!hydrated) {
+    return <div style={{ visibility: 'hidden' }}>{children}</div>
+  }
+
+  return (
+    <ThemeContext.Provider value={{ theme, setTheme }}>
+      {children}
+    </ThemeContext.Provider>
+  )
+}
+```
+
+### 4. Zustand Store with Persistence
+
+```typescript
+import { useHydrated } from '@/hooks/useHydrated'
+import { useFavoriteStore } from '@/stores/favorite.store'
+
+function FavoriteButton({ pokemonId }) {
+  const hydrated = useHydrated()
+  const isFavorite = useFavoriteStore(state => state.isFavorite(pokemonId))
+  const toggleFavorite = useFavoriteStore(state => state.toggleFavorite)
+
+  // Prevent hydration mismatch from persisted store
+  if (!hydrated) {
+    return <button disabled>♡</button>
+  }
+
+  return (
+    <button onClick={() => toggleFavorite({ id: pokemonId })}>
+      {isFavorite ? '♥' : '♡'}
+    </button>
+  )
+}
+```
+
+---
+
+## How It Works
+
+The hook uses a simple effect that runs only on the client:
+
+```typescript
+const [hydrated, setHydrated] = useState(false)
+
+useEffect(() => {
+  // This only runs in the browser, never on the server
+  setHydrated(true)
+}, [])
+
+return hydrated
+```
+
+**Timeline**:
+
+1. **Server Render**: `hydrated = false`, component renders with SSR-safe content
+2. **HTML Sent to Client**: Browser receives pre-rendered HTML
+3. **React Hydration Begins**: React attaches event handlers
+4. **useEffect Runs**: `setHydrated(true)` is called
+5. **Component Re-renders**: Now safe to use browser APIs
+
+---
+
+## Preventing Content Flash
+
+### Method 1: Show Loading State
+
+```typescript
+function Content() {
+  const hydrated = useHydrated()
+
+  if (!hydrated) {
+    return <Skeleton />
+  }
+
+  return <RealContent />
+}
+```
+
+### Method 2: Hide Until Hydrated
+
+```typescript
+function Content() {
+  const hydrated = useHydrated()
+
+  return (
+    <div style={{ opacity: hydrated ? 1 : 0 }}>
+      <RealContent />
+    </div>
+  )
+}
+```
+
+### Method 3: Conditional Rendering
+
+```typescript
+function Content() {
+  const hydrated = useHydrated()
+
+  return (
+    <div>
+      <StaticContent />
+      {hydrated && <ClientOnlyContent />}
+    </div>
+  )
+}
+```
+
+---
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always Use with Client Components">
+    Add `'use client'` directive at the top of files using this hook:
+    ```typescript
+    'use client'
+    
+    import { useHydrated } from '@/hooks/useHydrated'
+    
+    export function MyComponent() {
+      const hydrated = useHydrated()
+      // ...
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Combine with useEffect">
+    Access storage inside effects, not during render:
+    ```typescript
+    // Good
+    useEffect(() => {
+      if (hydrated) {
+        const data = localStorage.getItem('key')
+        setData(data)
+      }
+    }, [hydrated])
+    
+    // Bad - causes hydration mismatch
+    const data = hydrated ? localStorage.getItem('key') : null
+    ```
+  </Accordion>
+
+  <Accordion title="Provide Fallback UI">
+    Always render something during SSR:
+    ```typescript
+    if (!hydrated) {
+      return <Skeleton /> // Good
+      // return null         Bad - may cause layout shift
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Use for Zustand Persist">
+    Prevent mismatches when using Zustand's persist middleware:
+    ```typescript
+    const hydrated = useHydrated()
+    const storeValue = useStore(state => state.value)
+    
+    if (!hydrated) return <DefaultValue />
+    return <div>{storeValue}</div>
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Alternative: Next.js dynamic Import
+
+For components that should never render on the server:
+
+```typescript
+import dynamic from 'next/dynamic'
+
+const ClientOnlyComponent = dynamic(
+  () => import('./ClientOnlyComponent'),
+  { ssr: false }
+)
+
+function Page() {
+  return (
+    <div>
+      <ServerComponent />
+      <ClientOnlyComponent />
+    </div>
+  )
+}
+```
+
+**When to use dynamic vs useHydrated**:
+
+- **dynamic**: Entire component is client-only (e.g., map, chart library)
+- **useHydrated**: Component renders on server but needs client-specific data
+
+---
+
+## Complete Example
+
+```typescript
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useHydrated } from '@/hooks/useHydrated'
+import { useFavoriteStore } from '@/stores/favorite.store'
+
+function PokemonList() {
+  const hydrated = useHydrated()
+  const favorites = useFavoriteStore(state => state.favorites)
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+
+  // Load view mode from localStorage after hydration
+  useEffect(() => {
+    if (hydrated) {
+      const saved = localStorage.getItem('viewMode')
+      if (saved === 'grid' || saved === 'list') {
+        setViewMode(saved)
+      }
+    }
+  }, [hydrated])
+
+  // Save view mode to localStorage
+  useEffect(() => {
+    if (hydrated) {
+      localStorage.setItem('viewMode', viewMode)
+    }
+  }, [viewMode, hydrated])
+
+  // Show skeleton during SSR and initial hydration
+  if (!hydrated) {
+    return <PokemonListSkeleton />
+  }
+
+  return (
+    <div>
+      <ViewToggle mode={viewMode} onChange={setViewMode} />
+      <div className={viewMode === 'grid' ? 'grid' : 'list'}>
+        {favorites.map(pokemon => (
+          <PokemonCard key={pokemon.id} pokemon={pokemon} />
+        ))}
+      </div>
+    </div>
+  )
+}
+```
+
+---
+
+## Related
+
+- [Tweaks Store](/api/stores/tweaks-store) - Uses persistence that benefits from this hook
+- [Favorite Store](/api/stores/favorite-store) - Persists to localStorage
+- [usePokeFilters Hook](/api/hooks/use-poke-filters) - May need hydration check for persisted filters

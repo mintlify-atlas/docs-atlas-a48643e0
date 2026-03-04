@@ -1,0 +1,278 @@
+---
+title: 'Search & Filtering System'
+description: 'Advanced search and filtering with debouncing, region filtering, and type selection'
+---
+
+Poke-Nex implements a powerful filtering system that allows users to search, filter by region, filter by types, and sort Pokemon in real-time. The system uses debouncing for optimal performance and Zustand for state management.
+
+## Architecture Overview
+
+The filtering system is built around the `usePokeFilters` hook, which combines multiple filter criteria:
+
+- **Text Search**: Search by Pokemon name or ID
+- **Region Filter**: Filter by generation/region (Kanto, Johto, etc.)
+- **Type Filter**: Filter by one or multiple Pokemon types
+- **Sorting**: Sort by name (A-Z, Z-A) or ID (ascending, descending)
+
+## usePokeFilters Hook
+
+The core filtering logic is implemented in `src/hooks/usePokeFilters.ts`:
+
+```typescript usePokeFilters.ts
+import { REGIONS } from '@/constants'
+import { PokemonSummary, PokeType } from '@/types'
+import { useMemo } from 'react'
+import { useDebounce } from './useDebounce'
+import { useTweaksStore } from '@/stores/tweaks.store'
+
+type filterConfig = {
+  debounce?: number
+}
+
+export const usePokeFilters = (
+  pokeList: PokemonSummary[],
+  config: filterConfig = { debounce: 0 }
+) => {
+  const { query, region, types, sort, setQuery, setRegion, setSort, setTypes } =
+    useTweaksStore()
+  const debSearch = useDebounce(query, config.debounce || 0)
+
+  const list = useMemo(() => {
+    const query = debSearch.trim().toLowerCase()
+    const currentRegion =
+      region !== 'all' ? REGIONS.find((r) => r.name === region) : null
+
+    let result = [...pokeList]
+
+    // 1. Search filter
+    if (query !== '') {
+      result = result.filter(
+        ({ name, id }) =>
+          name.toLowerCase().includes(query) || id.toString().includes(query)
+      )
+    }
+
+    // 2. Region filter
+    if (currentRegion) {
+      const { start, end } = currentRegion
+      result = result.filter((p) => p.id >= start && p.id <= end)
+    }
+
+    // 3. Type filter
+    if (Array.isArray(types) && types.length > 0) {
+      result = result.filter((pokemon) =>
+        types.some((t) => pokemon.types && pokemon.types.includes(t))
+      )
+    }
+
+    // 4. Sorting
+    result.sort((a, b) => {
+      if (sort === 'id-asc') return a.id - b.id
+      if (sort === 'id-desc') return b.id - a.id
+      if (sort === 'name-asc') return a.name.localeCompare(b.name)
+      if (sort === 'name-desc') return b.name.localeCompare(a.name)
+      return 0
+    })
+
+    return result
+  }, [pokeList, debSearch, types, sort, region])
+
+  const toggleType = (typeName: PokeType['name']) => {
+    const isAlreadySelected = types.includes(typeName)
+    const newTypes = isAlreadySelected
+      ? types.filter((t) => t !== typeName)
+      : [...types, typeName]
+    setTypes(newTypes)
+  }
+
+  return {
+    list,
+    state: { search: query, region, types, sort },
+    setSearch: setQuery,
+    setRegion,
+    setSort,
+    toggleType,
+    clearTypes: () => setTypes([]),
+  }
+}
+```
+
+## Debounce Implementation
+
+To prevent excessive re-renders during typing, the search input uses a debounce hook (`src/hooks/useDebounce.ts`):
+
+```typescript useDebounce.ts
+import { useEffect, useState } from 'react'
+
+export const useDebounce = <T>(state: T, time: number = 300) => {
+  const [debState, setDebState] = useState(state)
+
+  useEffect(() => {
+    const timeoutID = setTimeout(() => {
+      setDebState(state)
+    }, time)
+
+    return () => {
+      clearTimeout(timeoutID)
+    }
+  }, [state, time])
+
+  return debState
+}
+```
+
+<Info>
+  The debounce delay is configurable. Poke-Nex uses 250ms for search input, which provides a good balance between responsiveness and performance.
+</Info>
+
+## Filter State Management
+
+Filter state is managed by Zustand in `src/stores/tweaks.store.ts`. This ensures filters persist across navigation:
+
+```typescript tweaks.store.ts
+import { PokeRegion, PokeSort, PokeType } from '@/types'
+import { create } from 'zustand'
+import { persist, createJSONStorage } from 'zustand/middleware'
+
+interface TweaksState {
+  page: number
+  region: PokeRegion['name']
+  types: PokeType['name'][]
+  sort: PokeSort
+  query: string
+
+  setQuery: (query: string) => void
+  setRegion: (region: PokeRegion['name']) => void
+  setTypes: (types: PokeType['name'][]) => void
+  setSort: (sort: PokeSort) => void
+  resetTweaks: () => void
+}
+
+export const useTweaksStore = create<TweaksState>()(persist(
+  (set, get) => ({
+    page: 1,
+    region: 'all',
+    types: [],
+    query: '',
+    sort: 'id-asc',
+
+    setQuery: (query) => set({ query }),
+    setRegion: (region) => {
+      const newRegion = region === get().region ? 'all' : region
+      set({ region: newRegion, page: 1 })
+    },
+    setTypes: (types) => set({ types, page: 1 }),
+    setSort: (sort) => set({ sort, page: 1 }),
+    resetTweaks: () => set({
+      page: 1,
+      region: 'all',
+      types: [],
+      query: '',
+      sort: 'id-asc',
+    }),
+  }),
+  {
+    name: 'pokenex-tweaks',
+    storage: createJSONStorage(() => sessionStorage),
+    partialize: (state) => ({
+      region: state.region,
+      types: state.types,
+    }),
+  }
+))
+```
+
+## Usage Example
+
+Here's how the filtering system is used in `PokeGallery` component:
+
+```typescript PokeGallery.tsx
+const {
+  list: filteredList,
+  state: filterState,
+  setSearch,
+  setRegion,
+  setSort,
+  toggleType,
+  clearTypes,
+} = usePokeFilters(content, { debounce: 250 })
+
+return (
+  <FilterBar
+    search={filterState.search}
+    region={filterState.region}
+    selectedTypes={filterState.types}
+    sort={filterState.sort}
+    onSearch={setSearch}
+    onRegionUpdate={setRegion}
+    onToggleType={toggleType}
+    onClearTypes={clearTypes}
+    onSort={setSort}
+  />
+)
+```
+
+## Performance Optimizations
+
+<CardGroup cols={2}>
+  <Card title="useMemo" icon="bolt">
+    The filter logic uses `useMemo` to prevent unnecessary recalculations. The filtered list only updates when dependencies change.
+  </Card>
+  
+  <Card title="Debouncing" icon="clock">
+    Search input is debounced by 250ms, reducing the number of filter operations while typing.
+  </Card>
+  
+  <Card title="SessionStorage" icon="database">
+    Filter state persists in sessionStorage, maintaining user preferences during the session.
+  </Card>
+  
+  <Card title="Pagination Reset" icon="arrows-rotate">
+    Changing filters automatically resets to page 1, ensuring users see relevant results immediately.
+  </Card>
+</CardGroup>
+
+## Filter Types
+
+### Text Search
+Searches both Pokemon names and IDs. The search is case-insensitive and uses substring matching:
+
+```typescript
+result.filter(
+  ({ name, id }) =>
+    name.toLowerCase().includes(query) || id.toString().includes(query)
+)
+```
+
+### Region Filter
+Regions are defined in `src/constants/pokemon.constant.ts` with ID ranges:
+
+```typescript
+export const REGIONS: PokeRegion[] = [
+  { name: 'kanto', start: 1, end: 151 },
+  { name: 'johto', start: 152, end: 251 },
+  { name: 'hoenn', start: 252, end: 386 },
+  // ... more regions
+]
+```
+
+### Type Filter
+Supports multi-type filtering. A Pokemon matches if it has ANY of the selected types:
+
+```typescript
+result.filter((pokemon) =>
+  types.some((t) => pokemon.types && pokemon.types.includes(t))
+)
+```
+
+<Note>
+  Region filter is toggle-based: clicking the same region again clears the filter.
+</Note>
+
+## Key Features
+
+- **Real-time filtering** with optimized performance
+- **Multiple filter combinations** work together seamlessly
+- **Persistent state** across page navigation (session-based)
+- **Type-safe** implementation with TypeScript
+- **Responsive** filtering that works on all device sizes

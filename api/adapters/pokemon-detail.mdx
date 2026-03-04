@@ -1,0 +1,241 @@
+---
+title: Pokemon Detail Adapter
+description: Transforms raw PokeAPI responses into a clean, application-friendly PokemonDetail format
+---
+
+The Pokemon Detail Adapter converts the complex, nested structure from the PokeAPI into a simplified `PokemonDetail` object that's optimized for use throughout the application.
+
+## adaptPokemon
+
+Main adapter function that transforms a raw API response into a structured Pokemon detail object.
+
+```typescript
+adaptPokemon(apiResponse: ApiPokemonResponse): PokemonDetail
+```
+
+### Parameters
+
+<ParamField path="apiResponse" type="ApiPokemonResponse" required>
+  The raw Pokemon response from PokeAPI, containing:
+  - `id` (number): Pokemon ID
+  - `name` (string): Pokemon name
+  - `height` (number): Height in decimeters
+  - `weight` (number): Weight in hectograms
+  - `types` (ApiPokemonType[]): Raw type data
+  - `sprites` (ApiPokemonSprites): Sprite URLs object
+  - `flavor_text_entries` (array): Description entries
+  - `genera` (array): Genus entries in multiple languages
+  - `abilities` (ApiPokemonAbility[]): Raw ability data
+  - `stats` (ApiPokemonStat[]): Raw stat data
+  - `evolution_chain` (object): Evolution chain reference
+  - `varieties` (ApiVariety[]): Pokemon form varieties
+</ParamField>
+
+### Returns
+
+<ResponseField name="result" type="PokemonDetail">
+  Adapted Pokemon detail object with the following structure:
+
+  <Expandable title="PokemonDetail Structure">
+    <ResponseField name="id" type="number">
+      Pokemon ID number
+    </ResponseField>
+
+    <ResponseField name="name" type="string">
+      Pokemon name in lowercase
+    </ResponseField>
+
+    <ResponseField name="genus" type="string">
+      Pokemon species genus (e.g., "Mouse", "Seed")
+    </ResponseField>
+
+    <ResponseField name="types" type="PokeType[]">
+      Array of type objects with `name` and `url`
+    </ResponseField>
+
+    <ResponseField name="abilities" type="object[]">
+      Array of abilities with:
+      - `name` (string): Ability name
+      - `hidden` (boolean): Whether it's a hidden ability
+    </ResponseField>
+
+    <ResponseField name="description" type="string">
+      Cleaned flavor text description in English
+    </ResponseField>
+
+    <ResponseField name="height" type="number">
+      Height in meters (converted from decimeters)
+    </ResponseField>
+
+    <ResponseField name="weight" type="number">
+      Weight in kilograms (converted from hectograms)
+    </ResponseField>
+
+    <ResponseField name="stats" type="PokeStat[]">
+      Array of base stats with mapped names:
+      - `name` ("HP" | "ATK" | "DEF" | "SPA" | "SPD" | "SPE")
+      - `value` (number): Base stat value
+    </ResponseField>
+
+    <ResponseField name="evolution" type="object | null">
+      Evolution chain reference with:
+      - `id` (number): Evolution chain ID
+      - `url` (string): PokeAPI evolution chain URL
+      - `chain` (Evolution[]): Initially empty, populated by service
+    </ResponseField>
+
+    <ResponseField name="varieties" type="PokeVariety[]">
+      Array of Pokemon form varieties (e.g., Mega evolutions, regional forms)
+    </ResponseField>
+
+    <ResponseField name="assets" type="object">
+      Sprite image URLs:
+      - `official.default` (string): Official artwork default
+      - `official.shiny` (string): Official artwork shiny
+      - `home.default` (string): Home sprite default
+      - `home.shiny` (string): Home sprite shiny
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Usage Example
+
+```typescript
+import { adaptPokemon } from '@/adapters/pokemon-detail.adapter'
+import { fetchPokemonByID } from '@/lib/api/pokemon.api'
+
+// Fetch raw data from API
+const rawData = await fetchPokemonByID('pikachu', true)
+
+// Adapt to clean format
+const pokemon = adaptPokemon(rawData)
+
+console.log(pokemon.name) // "pikachu"
+console.log(pokemon.genus) // "Mouse"
+console.log(pokemon.height) // 0.4 (meters)
+console.log(pokemon.weight) // 6.0 (kg)
+console.log(pokemon.types) // [{ name: "electric", url: "..." }]
+console.log(pokemon.stats) // [{ name: "HP", value: 35 }, ...]
+console.log(pokemon.assets.official.default) // "https://..."
+```
+
+---
+
+## Helper Functions
+
+The adapter uses several internal helper functions to transform specific data:
+
+### distillGenus
+
+Extracts the genus from multi-language entries.
+
+```typescript
+distillGenus(
+  genera: ApiPokemonResponse['genera'],
+  lang?: ApiLanguage['name']
+): string
+```
+
+**Default language**: `"en"`  
+**Returns**: Genus string with "Pokémon" suffix removed (e.g., "Mouse" from "Mouse Pokémon")
+
+### distillDescription
+
+Extracts and cleans the flavor text description.
+
+```typescript
+distillDescription(
+  flavorTextArray: ApiPokemonResponse['flavor_text_entries'],
+  lang?: ApiLanguage['name']
+): string
+```
+
+**Default language**: `"en"`  
+**Returns**: Cleaned description with whitespace normalized and special characters removed
+
+### mapTypes
+
+Converts API type format to application format.
+
+```typescript
+mapTypes(apiTypes: ApiPokemonResponse['types']): PokeType[]
+```
+
+**Returns**: Array of `PokeType` objects with `name` and `url` properties
+
+### mapAbilities
+
+Converts API ability format to simplified format.
+
+```typescript
+mapAbilities(abilities: ApiPokemonResponse['abilities']): object[]
+```
+
+**Returns**: Array of objects with `name` (string) and `hidden` (boolean)
+
+### mapStats
+
+Converts API stats to application stat format with friendly names.
+
+```typescript
+mapStats(apiStats: ApiPokemonResponse['stats']): PokeStat[]
+```
+
+**Returns**: Array of stats with mapped names (HP, ATK, DEF, SPA, SPD, SPE) and base values
+
+### mapVarieties
+
+Converts Pokemon varieties (forms) to application format.
+
+```typescript
+mapVarieties(
+  apiVarieties: ApiVariety[],
+  genus: string,
+  description: string
+): PokeVariety[]
+```
+
+**Returns**: Array of variety objects with full Pokemon data for each form
+
+---
+
+## Data Transformations
+
+The adapter performs several key transformations:
+
+<AccordionGroup>
+  <Accordion title="Unit Conversions">
+    - **Height**: Decimeters → Meters (divided by 10)
+    - **Weight**: Hectograms → Kilograms (divided by 10)
+  </Accordion>
+
+  <Accordion title="Text Cleaning">
+    - **Description**: Removes newlines, form feeds, tabs, and extra whitespace
+    - **Genus**: Removes "Pokémon" suffix
+    - **Variety names**: Replaces hyphens with spaces
+  </Accordion>
+
+  <Accordion title="Stat Name Mapping">
+    Maps API stat names to friendly abbreviations:
+    - `hp` → "HP"
+    - `attack` → "ATK"
+    - `defense` → "DEF"
+    - `special-attack` → "SPA"
+    - `special-defense` → "SPD"
+    - `speed` → "SPE"
+  </Accordion>
+
+  <Accordion title="Fallback Handling">
+    - Missing sprites default to Ditto sprite (ID 132)
+    - Missing genus defaults to "Unknown"
+    - Missing description defaults to "Not enough data has been collected yet to describe this Pokémon."
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Related
+
+- [Pokemon Service](/api/services/pokemon-service)
+- [Pokemon Summary Adapter](/api/adapters/pokemon-summary)
+- [Type Definitions](/api/types)

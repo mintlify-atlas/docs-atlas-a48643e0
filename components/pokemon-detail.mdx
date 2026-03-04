@@ -1,0 +1,238 @@
+---
+title: 'PokemonDetailView'
+description: 'Comprehensive Pokemon detail page with variety selection and stats'
+icon: 'circle-info'
+---
+
+## Overview
+
+The `PokemonDetailView` component displays comprehensive Pokemon information including varieties, stats, evolution chains, and abilities. It manages state for variety selection and shiny form toggling.
+
+## Import
+
+```tsx
+import { PokemonDetailView } from '@/components/pokemon'
+```
+
+## Props
+
+<ParamField path="data" type="PokemonDetail" required>
+  Complete Pokemon detail data including varieties, stats, evolution, and assets
+  
+  ```typescript
+  interface PokemonDetail {
+    id: number
+    name: string
+    height: number
+    weight: number
+    genus: string
+    description: string
+    types: PokeType[]
+    stats: PokeStat[]
+    abilities: { name: string; hidden: boolean }[]
+    varieties: PokeVariety[]
+    assets: {
+      official: { default: string; shiny: string }
+      home: { default: string; shiny: string }
+    }
+    evolution: {
+      id: number
+      chain: Evolution[]
+    } | null
+  }
+  ```
+</ParamField>
+
+## Usage Example
+
+```tsx
+import { PokemonDetailView } from '@/components/pokemon'
+import { getPokemonByName } from '@/services/pokemon.service'
+
+export default async function PokemonDetailPage({ 
+  params 
+}: { 
+  params: { name: string } 
+}) {
+  const { data: pokemon } = await getPokemonByName(params.name)
+  
+  if (!pokemon) {
+    return <div>Pokemon not found</div>
+  }
+  
+  return <PokemonDetailView data={pokemon} />
+}
+```
+
+## State Management
+
+The component manages two pieces of local state:
+
+### Shiny Toggle
+
+```tsx
+const [isShiny, setIsShiny] = useState<boolean>(false)
+```
+
+Controls whether to display the shiny or default sprite/artwork.
+
+### Variety Selection
+
+```tsx
+const [selectedVariety, setSelectedVariety] = useState<PokeVariety>(
+  data.varieties.find((variety) => variety.isDefault) || data.varieties[0]
+)
+```
+
+Stores the currently selected Pokemon variety (e.g., Alolan form, Galarian form).
+
+## Features
+
+### Dynamic Type-Based Theming
+
+The component calculates the theme based on the current variety's types:
+
+```tsx
+const currentTypes = 
+  selectedVariety.types.length > 0 ? selectedVariety.types : data.types
+  
+const type = getMostColorfulType(currentTypes.map((t) => t.name))
+const theme = POKE_THEMES[type]
+```
+
+### Variety Support
+
+Automatically detects and displays the default variety, with support for:
+- Regional forms (Alolan, Galarian, Hisuian, Paldean)
+- Mega evolutions
+- Gigantamax forms
+- Other special varieties
+
+### Component Composition
+
+The view is composed of three main sections:
+
+1. **DetailHero** - Header with sprite, name, types, and variety controls
+2. **DetailBento** - Grid layout with evolution, abilities, and physical data
+3. **DetailStats** - Radar chart displaying base stats
+
+## Component Structure
+
+```tsx
+export const PokemonDetailView = ({ data }: Props) => {
+  const [isShiny, setIsShiny] = useState<boolean>(false)
+  const [selectedVariety, setSelectedVariety] = useState<PokeVariety>(
+    data.varieties.find((variety) => variety.isDefault) || data.varieties[0]
+  )
+
+  const currentTypes =
+    selectedVariety.types.length > 0 ? selectedVariety.types : data.types
+  const type = getMostColorfulType(currentTypes.map((t) => t.name))
+  const theme = POKE_THEMES[type]
+
+  return (
+    <>
+      <DetailHero
+        data={data}
+        selectedVariety={selectedVariety}
+        isShiny={isShiny}
+        onSelectVariety={setSelectedVariety}
+        onToggleShiny={setIsShiny}
+        theme={theme}
+        currentTypes={currentTypes}
+      />
+
+      <DetailBento data={data} currentVariety={selectedVariety} />
+      <DetailStats hue={theme?.hue} stats={selectedVariety.stats} />
+    </>
+  )
+}
+```
+
+## Type Definitions
+
+### PokeVariety
+
+```typescript
+interface PokeVariety {
+  name: string
+  isDefault: boolean
+  pokemonId: number
+  types: PokeType[]
+  stats: PokeStat[]
+  abilities: { name: string; hidden: boolean }[]
+  weight: number
+  height: number
+  genus: string
+  description: string
+}
+```
+
+### PokeStat
+
+```typescript
+type PokeStat = {
+  name: 'HP' | 'ATK' | 'DEF' | 'SPA' | 'SPD' | 'SPE'
+  value: number
+}
+```
+
+### PokeType
+
+```typescript
+type PokeType = {
+  name: string  // 'fire', 'water', 'grass', etc.
+  url: string
+}
+```
+
+## Child Components
+
+### DetailHero
+
+Displays the Pokemon's primary information:
+- Large sprite/artwork (with shiny toggle)
+- Name and Pokedex number
+- Type badges
+- Variety selector dropdown
+- Height, weight, and genus
+- Flavor text description
+
+### DetailBento
+
+Bento-box style grid showing:
+- Evolution chain
+- Abilities (with hidden ability indicator)
+- Physical characteristics
+- Additional metadata
+
+### DetailStats
+
+Radar chart visualization of base stats:
+- HP, Attack, Defense
+- Special Attack, Special Defense
+- Speed
+
+Color-coded using the `hue` from the current type theme.
+
+## Variety Fallback Logic
+
+If a variety has no types defined, the component falls back to the base Pokemon's types:
+
+```tsx
+const currentTypes =
+  selectedVariety.types.length > 0 ? selectedVariety.types : data.types
+```
+
+This ensures the component always has valid type data for theming.
+
+## Related Components
+
+- [EvolutionChain](/components/evolution-chain) - Evolution chain display
+- [DetailHero](/components/detail-hero) - Hero section
+- [DetailBento](/components/detail-bento) - Info grid
+- [DetailStats](/components/detail-stats) - Stats chart
+
+## Source Location
+
+`/src/components/pokemon/PokemonDetailView.tsx:1-43`

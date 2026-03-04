@@ -1,0 +1,292 @@
+---
+title: 'Favorites System'
+description: 'Persistent favorites with Zustand and localStorage integration'
+---
+
+Poke-Nex includes a favorites system that allows users to bookmark their favorite Pokemon. The system uses Zustand for state management with the persist middleware to save favorites to localStorage.
+
+## Store Implementation
+
+The favorites store is implemented in `src/stores/favorite.store.ts`:
+
+```typescript favorite.store.ts
+import { PokemonSummary } from '@/types'
+import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
+
+type State = {
+  favorites: PokemonSummary[]
+}
+
+type Actions = {
+  toggleFavorite: (pokemon: PokemonSummary) => void
+  isFavorite: (id: PokemonSummary['id']) => boolean
+}
+
+interface Store extends State, Actions {}
+
+export const useFavoriteStore = create<Store>()(persist(
+  (set, get) => ({
+    favorites: [],
+    
+    isFavorite: (id) => get().favorites.some((p) => p.id === id),
+    
+    toggleFavorite: (pokemon) => {
+      const { favorites, isFavorite } = get()
+      const newPokemon: PokemonSummary = {
+        id: pokemon.id,
+        name: pokemon.name,
+        types: pokemon.types,
+        image: pokemon.image,
+      }
+      set({
+        favorites: isFavorite(newPokemon.id)
+          ? favorites.filter((p) => p.id !== newPokemon.id)
+          : [...favorites, newPokemon],
+      })
+    },
+  }),
+  {
+    name: 'POKENEX-FAVORITE-LIST',
+  }
+))
+```
+
+## Zustand Persist Middleware
+
+The persist middleware automatically syncs the favorites list with localStorage:
+
+<Steps>
+  <Step title="Initialization">
+    When the store is created, Zustand checks localStorage for existing data under the key `POKENEX-FAVORITE-LIST`.
+  </Step>
+  
+  <Step title="Rehydration">
+    If data exists, the store is rehydrated with the saved favorites. This happens before the first render.
+  </Step>
+  
+  <Step title="Auto-save">
+    Every time `toggleFavorite` is called, the updated state is automatically saved to localStorage.
+  </Step>
+  
+  <Step title="Cross-tab Sync">
+    Changes in one tab are reflected in other tabs through browser storage events.
+  </Step>
+</Steps>
+
+<Info>
+  The persist middleware serializes the entire `favorites` array to JSON and stores it in localStorage. The data persists even after closing the browser.
+</Info>
+
+## Hook Selectors
+
+The store exports several custom hooks for convenient access:
+
+### useFavoriteState
+
+Returns the entire favorites array:
+
+```typescript
+export const useFavoriteState = () => {
+  return useFavoriteStore((state) => state.favorites)
+}
+```
+
+**Usage:**
+```typescript
+const favorites = useFavoriteState()
+console.log(`You have ${favorites.length} favorite Pokemon`)
+```
+
+### useIsFavorite
+
+Checks if a specific Pokemon is favorited:
+
+```typescript
+export const useIsFavorite = (id: PokemonSummary['id']) => {
+  return useFavoriteStore((state) => state.favorites.some((p) => p.id === id))
+}
+```
+
+**Usage:**
+```typescript
+const isFavorite = useIsFavorite(pokemon.id)
+```
+
+<Warning>
+  This hook uses a selector to prevent unnecessary re-renders. It only updates when the favorite status of the specific Pokemon changes.
+</Warning>
+
+### useFavoriteActions
+
+Provides access to action methods:
+
+```typescript
+export const useFavoriteActions = () => {
+  const toggleFavorite = useFavoriteStore((state) => state.toggleFavorite)
+  return { toggleFavorite }
+}
+```
+
+**Usage:**
+```typescript
+const { toggleFavorite } = useFavoriteActions()
+```
+
+## Component Integration
+
+Here's how the FavoriteButton component uses the favorites system:
+
+```typescript FavoriteButton.tsx
+import { useFavoriteActions, useIsFavorite } from '@/stores/favorite.store'
+import { IoHeart } from 'react-icons/io5'
+
+interface Props {
+  pokemon: PokemonSummary
+}
+
+export const FavoriteButton = ({ pokemon }: Props) => {
+  const { toggleFavorite } = useFavoriteActions()
+  const isFavorite = useIsFavorite(pokemon.id)
+
+  return (
+    <button
+      onClick={() => toggleFavorite(pokemon)}
+      className="p-2 rounded-full hover:bg-zinc-700/50 transition-colors"
+    >
+      <IoHeart
+        className={`text-xl ${
+          isFavorite
+            ? 'text-rose-500 drop-shadow-[0_0_8px_rgba(244,63,94,0.5)]'
+            : 'text-zinc-600 hover:text-zinc-400'
+        } transition-all duration-200`}
+      />
+    </button>
+  )
+}
+```
+
+## Table Row Integration
+
+The favorites button is also integrated into the table view:
+
+```typescript PokemonTable.tsx
+const TableRow = memo(({ pokemon }: { pokemon: PokemonSummary }) => {
+  const toggleFavorite = useFavoriteActions().toggleFavorite
+  const isFavorite = useIsFavorite(pokemon.id)
+
+  const handleFavoriteClick = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    toggleFavorite(pokemon)
+  }
+
+  return (
+    <tr>
+      {/* ... other cells ... */}
+      <td className="py-4 pl-4 pr-6 text-right">
+        <button
+          onClick={handleFavoriteClick}
+          title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+        >
+          <IoHeart
+            className={`text-xl ${
+              isFavorite
+                ? 'text-rose-500 drop-shadow-[0_0_8px_rgba(244,63,94,0.5)]'
+                : 'text-zinc-600 hover:text-zinc-400'
+            }`}
+          />
+        </button>
+      </td>
+    </tr>
+  )
+})
+```
+
+<Note>
+  The click event handlers use `e.stopPropagation()` to prevent triggering the row's navigation when clicking the favorite button.
+</Note>
+
+## Toggle Logic
+
+The `toggleFavorite` function implements add/remove logic:
+
+```typescript
+toggleFavorite: (pokemon) => {
+  const { favorites, isFavorite } = get()
+  const newPokemon: PokemonSummary = {
+    id: pokemon.id,
+    name: pokemon.name,
+    types: pokemon.types,
+    image: pokemon.image,
+  }
+  set({
+    favorites: isFavorite(newPokemon.id)
+      ? favorites.filter((p) => p.id !== newPokemon.id)  // Remove
+      : [...favorites, newPokemon],                       // Add
+  })
+}
+```
+
+## Data Structure
+
+Favorites are stored as an array of `PokemonSummary` objects:
+
+```typescript
+interface PokemonSummary {
+  id: number
+  name: string
+  types: PokeType['name'][]
+  image: string
+}
+```
+
+Only essential data is stored to minimize localStorage usage.
+
+## localStorage Key
+
+Favorites are saved under the key:
+```
+POKENEX-FAVORITE-LIST
+```
+
+You can view the stored data in browser DevTools:
+1. Open DevTools (F12)
+2. Go to Application tab
+3. Expand Local Storage
+4. Find `POKENEX-FAVORITE-LIST`
+
+## Performance Considerations
+
+<CardGroup cols={2}>
+  <Card title="Selective Re-renders" icon="gauge-high">
+    Using `useIsFavorite(id)` with a selector ensures components only re-render when the specific Pokemon's favorite status changes.
+  </Card>
+  
+  <Card title="Minimal Data" icon="minimize">
+    Only storing `PokemonSummary` instead of full `PokemonDetail` reduces localStorage size.
+  </Card>
+  
+  <Card title="Memoization" icon="microchip">
+    Table rows use `memo()` to prevent unnecessary re-renders when favorites change.
+  </Card>
+  
+  <Card title="Auto-persistence" icon="floppy-disk">
+    Zustand persist middleware handles all serialization/deserialization automatically.
+  </Card>
+</CardGroup>
+
+## Benefits of Zustand
+
+1. **Simple API**: No reducers, actions, or complex setup
+2. **TypeScript Support**: Full type safety with minimal configuration
+3. **DevTools**: Compatible with Redux DevTools for debugging
+4. **No Context Provider**: Works without wrapping your app in providers
+5. **Persist Middleware**: Built-in localStorage sync
+6. **Performance**: Uses shallow comparison by default, preventing unnecessary renders
+
+## Cross-tab Synchronization
+
+The persist middleware automatically handles cross-tab synchronization. When you add/remove a favorite in one tab, all other tabs update automatically through the storage event listener.
+
+This is built into Zustand's persist middleware and requires no additional code.

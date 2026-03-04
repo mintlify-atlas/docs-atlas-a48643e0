@@ -1,0 +1,567 @@
+---
+title: Clean Architecture Pattern
+description: Detailed explanation of the three-layer architecture with real code examples
+---
+
+## Layer Structure
+
+Poke-Nex implements Clean Architecture through three distinct layers, each with specific responsibilities:
+
+```
+src/
+├── lib/api/          # Layer 1: Fetchers (Data Access)
+│   └── pokemon.api.ts
+├── adapters/         # Layer 2: Adapters (Data Transformation)
+│   ├── pokemon-detail.adapter.ts
+│   └── pokemon-summary.adapter.ts
+└── services/         # Layer 3: Services (Business Logic)
+    └── pokemon.service.ts
+```
+
+## Layer 1: Fetchers
+
+### Purpose
+
+Fetchers are responsible for **raw data access** from external APIs. They:
+
+- Make HTTP requests
+- Handle network-level errors (404, 500, timeouts)
+- Implement caching strategies
+- Return raw API response types
+- Don't transform or interpret data
+
+### Implementation
+
+**File**: `src/lib/api/pokemon.api.ts:15-88`
+
+<CodeGroup>
+```typescript pokemon.api.ts
+const BASE_URL = process.env.POKEAPI_BASE_URL
+const GQL_URL = process.env.POKEAPI_GQL_URL!
+const LIMIT = process.env.POKEMON_LIST_LIMIT
+
+// Fetch detailed Pokemon information with optional extended data
+export const fetchPokemonByID = async (
+  slug: string,
+  extended = false
+): Promise<ApiPokemonResponse> => {
+  // Fetch base Pokemon data
+  const baseResponse = await fetch(`${BASE_URL}/pokemon/${slug}`, {
+    next: { revalidate: 604800 },
+  })
+  
+  if (!baseResponse.ok) {
+    throw new ApiError(
+      `[API.ERROR] The Pokémon "${slug}" could not be obtained.`,
+      baseResponse.status,
+      '[fetchPokemonByID.base]'
+    )
+  }
+  
+  const baseData: ApiPokemonResponse = await baseResponse.json()
+  if (!extended) return baseData
+
+  // Fetch additional species data when extended=true
+  const speciesResponse = await fetch(baseData.species.url)
+  if (!speciesResponse.ok) {
+    throw new ApiError(
+      `[API.ERROR] The Pokémon "${slug}" could not be obtained.`,
+      speciesResponse.status,
+      '[fetchPokemonByID.species]'
+    )
+  }
+  const speciesData: ApiSpeciesResponse = await speciesResponse.json()
+
+  // Fetch full data for each variety in parallel
+  const varietyData = await Promise.all(
+    speciesData.varieties.map(async (variety) => {
+      if (variety.pokemon.name === baseData.name) {
+        return {
+          ...variety,
+          types: baseData.types,
+          stats: baseData.stats,
+          abilities: baseData.abilities,
+          weight: baseData.weight,
+          height: baseData.height,
+        }
+      }
+
+      try {
+        const res = await fetch(variety.pokemon.url, {
+          next: { revalidate: 604800 },
+        })
+        if (res.ok) {
+          const data: ApiPokemonResponse = await res.json()
+          return {
+            ...variety,
+            types: data.types,
+            stats: data.stats,
+            abilities: data.abilities,
+            weight: data.weight,
+            height: data.height,
+          }
+        }
+      } catch (e) {
+        console.error(
+          `[API.ERROR] Could not fetch variety ${variety.pokemon.name}`,
+          e
+        )
+      }
+      return variety
+    })
+  )
+
+  return {
+    ...baseData,
+    genera: speciesData.genera,
+    flavor_text_entries: speciesData.flavor_text_entries,
+    evolution_chain: speciesData.evolution_chain,
+    varieties: varietyData,
+  }
+}
+```
+
+```typescript Fetch List (REST)
+export const fetchPokemonList = async (
+  limit: number = Number(LIMIT)
+): Promise<ApiPokemonListResponse> => {
+  const response = await fetch(`${BASE_URL}/pokemon?limit=${limit}`)
+  if (!response.ok) {
+    throw new ApiError(
+      `[API.ERROR] The Pokémon list could not be obtained.`,
+      response.status,
+      '[fetchPokemonList]'
+    )
+  }
+  return await response.json()
+}
+```
+
+```typescript Fetch List (GraphQL)
+export const fetchPokemonListGQL = async (
+  limit: number = Number(LIMIT)
+): Promise<GQLPokemonSummaryList> => {
+  const query = `
+    query getPokemonList($limit: Int, $offset: Int) {
+      pokemon(limit: $limit, offset: $offset) {
+        id
+        name
+        pokemontypes {
+          type {
+            name
+          }
+        }
+      }
+    }
+  `
+  const response = await fetch(GQL_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query,
+      variables: { limit, offset: 0 },
+    }),
+    next: { revalidate: 604800 },
+  })
+
+  if (!response.ok) {
+    throw new ApiError(
+      `[API.ERROR] The Pokémon list could not be obtained.`,
+      response.status,
+      '[fetchPokemonList]'
+    )
+  }
+
+  return await response.json()
+}
+```
+</CodeGroup>
+
+<Note>
+**Key Characteristics**:
+- Returns `ApiPokemonResponse` (raw API type)
+- Handles HTTP status codes
+- Implements Next.js ISR caching with `revalidate: 604800` (7 days)
+- Throws `ApiError` with context for debugging
+- Supports both REST and GraphQL endpoints
+</Note>
+
+## Layer 2: Adapters
+
+### Purpose
+
+Adapters transform raw API data into clean, application-specific models. They:
+
+- Map API field names to app field names
+- Normalize data (e.g., convert units, format strings)
+- Extract nested data
+- Filter and select relevant fields
+- Convert types to match application models
+
+### Implementation: Pokemon Detail Adapter
+
+**File**: `src/adapters/pokemon-detail.adapter.ts:10-67`
+
+```typescript
+import { POKEMON_STATS } from '@/constants'
+import {
+  ApiLanguage,
+  ApiPokemonResponse,
+  PokemonDetail,
+  PokeStat,
+  PokeType,
+} from '@/types'
+
+export const adaptPokemon = ({
+  id,
+  name,
+  height,
+  weight,
+  types,
+  sprites,
+  flavor_text_entries,
+  genera,
+  abilities: apiAbilities,
+  stats: apiStats,
+  evolution_chain,
+  varieties: apiVarieties,
+}: ApiPokemonResponse): PokemonDetail => {
+  const mappedTypes = mapTypes(types)
+  const artwork = sprites.other['official-artwork']
+  const home = sprites.other.home
+  const dummyImage =
+    'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/back/132.png'
+  
+  const genus = distillGenus(genera)
+  const abilities = mapAbilities(apiAbilities)
+  const description = distillDescription(flavor_text_entries)
+  const stats = mapStats(apiStats)
+  
+  const evolution =
+    evolution_chain && evolution_chain.url
+      ? {
+          id: distillEvolutionChainId(evolution_chain.url),
+          url: evolution_chain.url,
+          chain: [],
+        }
+      : null
+  
+  const varieties = mapVarieties(apiVarieties || [], genus, description)
+
+  return {
+    id,
+    name,
+    genus,
+    types: mappedTypes,
+    abilities,
+    description,
+    height: height / 10,  // Convert from decimeters to meters
+    weight: weight / 10,  // Convert from hectograms to kilograms
+    stats,
+    evolution,
+    varieties,
+    assets: {
+      official: {
+        default: artwork.front_default || dummyImage,
+        shiny: artwork.front_shiny || dummyImage,
+      },
+      home: {
+        default: home.front_default || dummyImage,
+        shiny: home.front_shiny || dummyImage,
+      },
+    },
+  }
+}
+```
+
+### Helper Functions
+
+<CodeGroup>
+```typescript Map Types
+const mapTypes = (apiTypes: ApiPokemonResponse['types']): PokeType[] => {
+  return apiTypes.map((type) => ({
+    name: type.type.name as PokeType['name'],
+    url: type.type.url,
+  }))
+}
+```
+
+```typescript Map Stats
+const mapStats = (apiStats: ApiPokemonResponse['stats']): PokeStat[] => {
+  return apiStats.map(({ stat, base_stat }) => ({
+    name: POKEMON_STATS[stat.name],  // Maps to abbreviations (HP, ATK, etc.)
+    value: base_stat,
+  }))
+}
+```
+
+```typescript Extract Description
+const distillDescription = (
+  flavorTextArray: ApiPokemonResponse['flavor_text_entries'],
+  lang: ApiLanguage['name'] = 'en'
+) => {
+  const description =
+    flavorTextArray?.find((item) => item.language.name === lang)?.flavor_text ||
+    'Not enough data has been collected yet to describe this Pokémon.'
+  
+  // Clean up formatting characters
+  return description
+    .replace(/[\n\f\r\t]/g, ' ')
+    .replace(/\s\s+/g, ' ')
+    .trim()
+}
+```
+
+```typescript Extract Genus
+const distillGenus = (
+  genera: ApiPokemonResponse['genera'],
+  lang: ApiLanguage['name'] = 'en'
+) => {
+  return (
+    genera
+      ?.find((item) => item.language.name === lang)
+      ?.genus.replace('Pokémon', '') || 'Unknown'
+  )
+}
+```
+</CodeGroup>
+
+<Note>
+**Adapter Characteristics**:
+- Transforms `ApiPokemonResponse` → `PokemonDetail`
+- Converts units (decimeters to meters, hectograms to kilograms)
+- Extracts localized text (English descriptions, genus)
+- Normalizes sprite URLs with fallbacks
+- Maps API stat names to app abbreviations
+</Note>
+
+### Implementation: Pokemon Summary Adapter
+
+**File**: `src/adapters/pokemon-summary.adapter.ts:3-18`
+
+```typescript
+import { GQLPokemonSummaryList, PokemonSummary } from '@/types'
+
+export const adaptPokemonSummary = ({
+  id,
+  name,
+  pokemontypes,
+}: GQLPokemonSummaryList['data']['pokemon'][number]): PokemonSummary => {
+  const types = pokemontypes.map(
+    (t) => t.type.name as PokemonSummary['types'][number]
+  )
+
+  return {
+    id,
+    name,
+    types,
+    image: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/${id || 132}.png`,
+  }
+}
+```
+
+<Info>
+This adapter is specifically designed for GraphQL responses, transforming the nested `pokemontypes` structure into a flat array of type names.
+</Info>
+
+## Layer 3: Services
+
+### Purpose
+
+Services orchestrate fetchers and adapters to provide a clean API for components. They:
+
+- Validate input parameters
+- Call appropriate fetchers
+- Transform data using adapters
+- Handle and normalize errors
+- Return standardized response format
+- Implement business logic (e.g., fetching related data)
+
+### Implementation
+
+**File**: `src/services/pokemon.service.ts`
+
+<CodeGroup>
+```typescript Get Pokemon Detail
+export const getPokemonDetail = async (
+  slug: string,
+  extended: boolean = true
+): Promise<ServiceResponse<PokemonDetail>> => {
+  try {
+    // Validate input
+    if (!slug) throw new Error('The Pokémon slug or ID is required.')
+    
+    // Fetch raw data
+    const pokemonData = await fetchPokemonByID(slug, extended)
+    if (!pokemonData) throw new ApiError('Pokémon data is null')
+    
+    // Transform and return
+    return { data: adaptPokemon(pokemonData), error: null }
+  } catch (error) {
+    const fault = handleServiceError(error, '[getPokemonDetail]')
+    return {
+      data: null,
+      error: fault,
+    }
+  }
+}
+```
+
+```typescript Get Pokemon List (GraphQL)
+export const getPokemonListGQL = async (): Promise<
+  ServiceResponse<PokemonSummary[]>
+> => {
+  try {
+    // Fetch from GraphQL endpoint
+    const pokemonList = await fetchPokemonListGQL()
+    
+    if (!pokemonList || pokemonList.data.pokemon.length === 0) {
+      throw new ApiError('Pokémon list is null')
+    }
+    
+    // Transform each item using adapter
+    const data = pokemonList.data.pokemon.map((p) => adaptPokemonSummary(p))
+    return { data, error: null }
+  } catch (error) {
+    const fault = handleServiceError(error, '[getPokemonList]')
+    return {
+      data: null,
+      error: fault,
+    }
+  }
+}
+```
+
+```typescript Complex Orchestration
+export const getPokemonDetailList = async (): Promise<
+  ServiceResponse<PokemonDetail[]>
+> => {
+  try {
+    // First, get the list of Pokemon names
+    const keyList = await getPokemonList()
+    
+    if (!keyList.data) {
+      // Propagate original error
+      if (keyList.error) {
+        const originalError = new ApiError(
+          keyList.error.message,
+          typeof keyList.error.code === 'number'
+            ? keyList.error.code
+            : undefined,
+          keyList.error.context
+        )
+        throw originalError
+      }
+      throw new ApiError('Pokémon list is null')
+    }
+    
+    // Fetch details for each Pokemon in parallel
+    const promises = keyList.data.map(({ name }) =>
+      getPokemonDetail(name, false)
+    )
+    const responses = await Promise.all(promises)
+    
+    // Filter out errors and extract data
+    const result = responses
+      .filter((res) => res.data != null)
+      .map((res) => res.data)
+
+    return { data: result, error: null }
+  } catch (error) {
+    const fault = handleServiceError(error, '[getPokemonDetailList]')
+    return {
+      data: null,
+      error: fault,
+    }
+  }
+}
+```
+</CodeGroup>
+
+<Note>
+**Service Characteristics**:
+- Always returns `ServiceResponse<T>` with both `data` and `error` fields
+- Never throws errors to components
+- Validates inputs before calling fetchers
+- Orchestrates multiple data sources (see `getPokemonDetailList`)
+- Uses `handleServiceError` to normalize all errors
+</Note>
+
+## Type Definitions
+
+### Service Response Type
+
+**File**: `src/types/service.types.ts:8-11`
+
+```typescript
+export type ServiceResponse<T> =
+  | { data: T; error: null }
+  | { data: null; error: DisplayError }
+```
+
+This discriminated union ensures components always check for errors:
+
+```typescript
+const { data, error } = await getPokemonDetail('pikachu')
+
+if (error) {
+  // Handle error: data is guaranteed to be null
+  console.error(error.message)
+  return
+}
+
+// data is guaranteed to be PokemonDetail
+console.log(data.name)
+```
+
+### Error Types
+
+**File**: `src/types/service.types.ts:2-23`
+
+```typescript
+// User-facing error
+export interface DisplayError {
+  message: string
+  code?: string | number
+  context?: string
+}
+
+// Internal API error with additional context
+export class ApiError extends Error {
+  constructor(
+    public message: string,
+    public status?: number,
+    public context?: string
+  ) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+```
+
+## Benefits of This Pattern
+
+<CardGroup cols={2}>
+  <Card title="API Independence" icon="plug">
+    PokeAPI changes only affect fetchers and adapters. Services and components remain unchanged.
+  </Card>
+  <Card title="Easy Testing" icon="flask">
+    Mock fetchers to test adapters. Mock services to test components. No network required.
+  </Card>
+  <Card title="Type Safety" icon="shield-check">
+    Compile-time guarantees that components never receive raw API data.
+  </Card>
+  <Card title="Reusability" icon="recycle">
+    Adapters and services can be shared across different UI frameworks.
+  </Card>
+</CardGroup>
+
+<Tip>
+See the [Data Flow](/architecture/data-flow) page to see how a real request flows through all three layers.
+</Tip>
+
+## Next Steps
+
+<Card title="Trace Data Flow" icon="route" href="/architecture/data-flow">
+  Follow a complete request from component → service → adapter → fetcher → API
+</Card>

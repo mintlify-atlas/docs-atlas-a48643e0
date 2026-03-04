@@ -1,0 +1,504 @@
+---
+title: "Hydration Strategy"
+description: "Learn how to prevent UI flickering with custom hydration guards for persisted client state"
+---
+
+## Overview
+
+Hydration mismatches occur when server-rendered HTML differs from the initial client render. This is especially common when using persisted state (localStorage, sessionStorage) that isn't available during server-side rendering.
+
+Poke-Nex implements a **custom hydration guard** using the `useHydrated` hook to eliminate UI flickering and provide a smooth user experience.
+
+<Warning>
+  **Hydration mismatches** cause React to throw warnings, create visual flickers, and force expensive re-renders. Always guard client-only state access.
+</Warning>
+
+## The Hydration Problem
+
+### Why Hydration Mismatches Happen
+
+Consider this problematic code:
+
+```typescript
+'use client'
+
+import { useFavoriteStore } from '@/stores/favorite.store'
+
+export const FavoriteButton = ({ pokemon }) => {
+  const isFavorite = useFavoriteStore((s) => s.favorites.some(p => p.id === pokemon.id))
+  
+  return (
+    <button>
+      {isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+    </button>
+  )
+}
+```
+
+**What happens:**
+
+1. **Server (SSR)**: Renders with empty favorites (no access to localStorage)
+2. **HTML delivered**: Button says "Add to favorites"
+3. **Client hydrates**: Zustand loads favorites from localStorage
+4. **Component re-renders**: Button suddenly says "Remove from favorites"
+5. **Visual flicker**: User sees button text change abruptly
+
+<Note>
+  React's hydration expects the initial client render to match the server HTML exactly. Any mismatch forces React to discard the server HTML and re-render from scratch.
+</Note>
+
+## The Solution: useHydrated Hook
+
+### Implementation
+
+Poke-Nex uses a simple but effective hydration guard:
+
+```typescript src/hooks/useHydrated.ts
+'use client'
+
+import { useEffect, useState } from 'react'
+
+/**
+ * Hook to verify if the component is mounted on the client.
+ * Useful to prevent hydration errors when using storage or browser APIs.
+ */
+export const useHydrated = () => {
+  const [hydrated, setHydrated] = useState(false)
+
+  useEffect(() => {
+    // This code only runs once the component mounts in the browser
+    setHydrated(true)
+  }, [])
+
+  return hydrated
+}
+```
+
+**How it works:**
+
+1. **Initial State**: `hydrated` starts as `false` (matches server state)
+2. **Server Render**: Component renders with `hydrated = false`
+3. **Client Hydration**: React hydrates with same `hydrated = false`
+4. **useEffect Runs**: After hydration, `setHydrated(true)` triggers
+5. **Component Re-renders**: Now with access to client-only APIs
+
+### Why This Works
+
+- **Server and initial client render match**: Both see `hydrated = false`
+- **No hydration mismatch**: React successfully attaches event handlers
+- **useEffect only runs client-side**: `setHydrated(true)` happens after hydration
+- **Single re-render**: Clean transition from skeleton to real content
+
+<Tip>
+  The `useHydrated` hook is a simple pattern that solves 90% of hydration issues. Use it whenever accessing localStorage, sessionStorage, or browser APIs.
+</Tip>
+
+## Real-World Usage
+
+### PokeGallery Component
+
+The main gallery uses `useHydrated` to prevent flickering when loading user preferences:
+
+```typescript src/components/pokemon/PokeGallery.tsx
+'use client'
+
+import { useHydrated } from '@/hooks/useHydrated'
+import { PokeGallerySkeleton } from '../skeletons'
+import { useTweaksStore } from '@/stores/tweaks.store'
+
+export const PokeGallery = ({ content }: Props) => {
+  const isHydrated = useHydrated()
+  const view = useTweaksStore((s) => s.view)
+  const setView = useTweaksStore((s) => s.setView)
+
+  const {
+    list: filteredList,
+    state: filterState,
+    setSearch,
+    setRegion,
+    setSort,
+    toggleType,
+    clearTypes,
+  } = usePokeFilters(content, { debounce: 250 })
+
+  const {
+    paginated: paginatedList,
+    current,
+    pages,
+    next,
+    prev,
+    setCurrent,
+  } = usePaginate(filteredList, 24)
+
+  if (!isHydrated) return <PokeGallerySkeleton />
+
+  return (
+    <section className="flex flex-col gap-8 max-w-7xl min-h-[68vh]">
+      <FilterBar
+        search={filterState.search}
+        region={filterState.region}
+        selectedTypes={filterState.types}
+        sort={filterState.sort}
+        view={view}
+        onSearch={setSearch}
+        onRegionUpdate={setRegion}
+        onToggleType={toggleType}
+        onClearTypes={clearTypes}
+        onSort={setSort}
+        onViewUpdate={setView}
+      />
+
+      {paginatedList.length > 0 ? (
+        view === 'grid' ? (
+          <GridContainer>
+            {paginatedList.map((pokemon) => (
+              <PokemonCard key={pokemon.id} content={pokemon} />
+            ))}
+          </GridContainer>
+        ) : (
+          <PokemonTable content={paginatedList} />
+        )
+      ) : (
+        <div className="col-span-full py-20 text-center">
+          <p className="text-zinc-500 italic">
+            No specimens match your current filters.
+          </p>
+        </div>
+      )}
+
+      <PaginationControl
+        current={current}
+        total={pages}
+        onNext={next}
+        onPrev={prev}
+        onPageSelect={setCurrent}
+      />
+    </section>
+  )
+}
+```
+
+**What this prevents:**
+
+1. **View Mode Flicker**: User's grid/list preference loads smoothly
+2. **Filter State Flash**: Persisted filters don't cause visual jumps
+3. **Region Selection Jump**: Stored region selection appears without flickering
+4. **Type Filter Pop-in**: Selected types render correctly from the start
+
+### FavoriteButton Component
+
+The favorite button doesn't use `useHydrated` because it handles state internally:
+
+```typescript src/components/pokemon/FavoriteButton.tsx
+'use client'
+
+import { useFavoriteActions, useIsFavorite } from '@/stores/favorite.store'
+
+export const FavoriteButton = ({ pokemon }: Props) => {
+  const { id } = pokemon
+  const { toggleFavorite } = useFavoriteActions()
+  const handleToggleFavorite = () => toggleFavorite(pokemon)
+  const isFavorite = useIsFavorite(id)
+
+  return (
+    <Button
+      className={`flex items-center justify-center gap-3 w-full md:w-fit ${
+        isFavorite ? 'bg-white! text-black! font-semibold!' : ''
+      }`}
+      onClick={handleToggleFavorite}
+    >
+      {isFavorite ? (
+        <>
+          <CgClose className="text-xl" />
+          <span>Remove from favorites</span>
+        </>
+      ) : (
+        <>
+          <IoHeart className="text-2xl" />
+          <span>Add to favorites</span>
+        </>
+      )}
+    </Button>
+  )
+}
+```
+
+**Why this works without `useHydrated`:**
+
+- Button is only rendered on detail pages (already hydrated)
+- Initial flicker is acceptable for a single button
+- Zustand handles the state synchronization internally
+- The button is not critical for initial page render
+
+<Note>
+  Not every component needs `useHydrated`. Use it for **layout-critical components** that affect the initial visual experience, like galleries, navigation, or view modes.
+</Note>
+
+## State Persistence Strategy
+
+### SessionStorage for Temporary State
+
+Poke-Nex uses `sessionStorage` for view preferences that should reset between sessions:
+
+```typescript src/stores/tweaks.store.ts
+export const useTweaksStore = create<TweaksState>()()
+  persist(
+    (set, get) => ({
+      page: 1,
+      region: 'all',
+      types: [],
+      query: '',
+      sort: 'id-asc',
+      view: 'grid',
+      // ... actions
+    }),
+    {
+      name: 'pokenex-tweaks',
+      storage: createJSONStorage(() => sessionStorage),
+      partialize: (state) => ({
+        // Only persist these fields:
+        view: state.view,
+        region: state.region,
+        types: state.types,
+        // page and query are NOT persisted
+      }),
+    }
+  )
+)
+```
+
+**Design decisions:**
+
+- **Persisted**: `view`, `region`, `types` - User preferences within session
+- **Not Persisted**: `page`, `query` - Volatile navigation state
+- **SessionStorage**: Clears when tab closes, fresh start in new tabs
+
+### LocalStorage for Permanent State
+
+Favorites use `localStorage` to persist across all sessions:
+
+```typescript src/stores/favorite.store.ts
+export const useFavoriteStore = create<Store>()()
+  persist(
+    (set, get) => ({
+      favorites: [],
+      isFavorite: (id) => get().favorites.some((p) => p.id === id),
+      toggleFavorite: (pokemon) => {
+        const { favorites, isFavorite } = get()
+        const newPokemon: PokemonSummary = {
+          id: pokemon.id,
+          name: pokemon.name,
+          types: pokemon.types,
+          image: pokemon.image,
+        }
+        set({
+          favorites: isFavorite(newPokemon.id)
+            ? favorites.filter((p) => p.id !== newPokemon.id)
+            : [...favorites, newPokemon],
+        })
+      },
+    }),
+    {
+      name: 'POKENEX-FAVORITE-LIST',
+      // Uses localStorage by default
+    }
+  )
+)
+```
+
+**Why localStorage for favorites:**
+
+- User's collection should persist across sessions
+- Losing favorites on tab close would be frustrating
+- No performance impact (favorites list is small)
+
+## Skeleton Loading Pattern
+
+### Why Skeletons Matter
+
+Skeletons provide instant visual feedback during hydration:
+
+```typescript src/components/pokemon/PokeGallery.tsx
+if (!isHydrated) return <PokeGallerySkeleton />
+```
+
+**Benefits:**
+
+1. **Perceived Performance**: User sees layout immediately
+2. **No Content Flash**: Smooth transition from skeleton to content
+3. **No Layout Shift**: Skeleton matches final content dimensions
+4. **Professional UX**: Matches modern web application standards
+
+### Skeleton Design Principles
+
+- **Match Layout**: Skeleton dimensions should match final content
+- **Minimal Animation**: Subtle pulse or shimmer, not distracting
+- **Accessible**: Use proper ARIA attributes (`aria-busy="true"`)
+- **Fast**: Skeleton should render in < 50ms
+
+<Tip>
+  Design your skeletons to match the final content's layout as closely as possible. This prevents Cumulative Layout Shift (CLS) and improves Core Web Vitals scores.
+</Tip>
+
+## Common Pitfalls
+
+### ❌ Accessing Storage Directly
+
+```typescript
+// BAD: Direct localStorage access without hydration guard
+'use client'
+
+export const MyComponent = () => {
+  const saved = localStorage.getItem('my-key') // Error on server!
+  return <div>{saved}</div>
+}
+```
+
+### ✅ Using Hydration Guard
+
+```typescript
+// GOOD: Guard storage access with useHydrated
+'use client'
+
+export const MyComponent = () => {
+  const isHydrated = useHydrated()
+  const saved = isHydrated ? localStorage.getItem('my-key') : null
+  
+  if (!isHydrated) return <Skeleton />
+  return <div>{saved}</div>
+}
+```
+
+### ❌ Conditional Rendering Without Guard
+
+```typescript
+// BAD: Zustand loads from storage immediately
+'use client'
+
+export const Gallery = () => {
+  const view = useTweaksStore((s) => s.view) // Hydration mismatch!
+  return view === 'grid' ? <Grid /> : <List />
+}
+```
+
+### ✅ Guard Before Conditional Rendering
+
+```typescript
+// GOOD: Wait for hydration before using persisted state
+'use client'
+
+export const Gallery = () => {
+  const isHydrated = useHydrated()
+  const view = useTweaksStore((s) => s.view)
+  
+  if (!isHydrated) return <Skeleton />
+  return view === 'grid' ? <Grid /> : <List />
+}
+```
+
+## Advanced Patterns
+
+### Hybrid Server/Client Rendering
+
+Some components can render partial content on the server:
+
+```typescript
+'use client'
+
+export const HybridComponent = ({ staticData }) => {
+  const isHydrated = useHydrated()
+  const userPrefs = useTweaksStore((s) => s.view)
+  
+  return (
+    <div>
+      {/* Always rendered (server + client) */}
+      <StaticContent data={staticData} />
+      
+      {/* Only after hydration */}
+      {isHydrated && <DynamicContent prefs={userPrefs} />}
+    </div>
+  )
+}
+```
+
+### Deferred Hydration
+
+For non-critical components, defer hydration until needed:
+
+```typescript
+export const DeferredComponent = () => {
+  const [shouldLoad, setShouldLoad] = useState(false)
+  const isHydrated = useHydrated()
+  
+  useEffect(() => {
+    // Defer until idle
+    requestIdleCallback(() => setShouldLoad(true))
+  }, [isHydrated])
+  
+  if (!isHydrated || !shouldLoad) return <Placeholder />
+  return <ExpensiveComponent />
+}
+```
+
+## Performance Impact
+
+### Without Hydration Guard
+
+- **Hydration mismatch warning**: React logs console errors
+- **Forced re-render**: React discards server HTML
+- **Layout thrashing**: Visual elements jump around
+- **Poor Core Web Vitals**: High CLS score
+
+### With Hydration Guard
+
+- **Clean hydration**: Server and client HTML match
+- **Single re-render**: Clean transition after hydration
+- **Stable layout**: No unexpected shifts
+- **Better Core Web Vitals**: Low CLS score
+
+<Note>
+  **Performance cost**: One additional re-render after hydration. This is negligible compared to the cost of hydration mismatches and forced re-renders.
+</Note>
+
+## Testing Hydration Issues
+
+### Detect Hydration Mismatches
+
+```typescript
+// next.config.ts
+const nextConfig = {
+  reactStrictMode: true, // Enables hydration checks in development
+}
+```
+
+React will log warnings like:
+
+```
+Warning: Text content did not match. Server: "Add to favorites" Client: "Remove from favorites"
+```
+
+### Visual Testing
+
+1. Disable JavaScript in DevTools
+2. Refresh the page
+3. Check if content matches your expectations
+4. Re-enable JavaScript
+5. Watch for visual flashes or layout shifts
+
+## Best Practices
+
+1. **Always use `useHydrated`** when accessing localStorage/sessionStorage
+2. **Provide skeleton loaders** that match final content layout
+3. **Use sessionStorage** for temporary preferences (view mode, filters)
+4. **Use localStorage** for permanent data (favorites, settings)
+5. **Test with JavaScript disabled** to verify server rendering
+6. **Monitor hydration warnings** in development console
+7. **Measure CLS scores** to ensure stable layouts
+8. **Keep skeletons simple** to maintain fast initial render
+9. **Defer non-critical hydration** until after initial page load
+10. **Document which components need hydration guards**
+
+## Related Documentation
+
+- [Performance Optimizations](/performance/optimization) - Learn about other performance techniques
+- [SSG & ISR Strategy](/performance/ssg-isr) - Understand static generation and revalidation

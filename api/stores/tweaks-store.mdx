@@ -1,0 +1,587 @@
+---
+title: Tweaks Store
+description: Zustand store managing UI preferences, filters, and pagination state with sessionStorage persistence
+---
+
+The Tweaks Store provides centralized state management for UI preferences, search queries, filters, sorting, and pagination across the Pokemon application.
+
+## Store Definition
+
+```typescript
+import { create } from 'zustand'
+import { persist, createJSONStorage } from 'zustand/middleware'
+
+interface TweaksState {
+  // State
+  page: number
+  region: PokeRegion['name']
+  types: PokeType['name'][]
+  sort: PokeSort
+  view: View
+  query: string
+  
+  // Actions
+  setView: (view: View) => void
+  setSort: (sort: PokeSort) => void
+  setPage: (page: number) => void
+  setRegion: (region: PokeRegion['name']) => void
+  setTypes: (types: PokeType['name'][]) => void
+  setQuery: (query: string) => void
+  resetTweaks: () => void
+}
+```
+
+---
+
+## State Properties
+
+### page
+
+<ResponseField name="page" type="number" default="1">
+  Current pagination page number (1-based index)
+</ResponseField>
+
+### region
+
+<ResponseField name="region" type="RegionName" default="'all'">
+  Selected Pokemon region filter. Options:
+  - `"all"` - No region filter
+  - `"kanto"` - Generation I (IDs 1-151)
+  - `"johto"` - Generation II (IDs 152-251)
+  - `"hoenn"` - Generation III (IDs 252-386)
+  - `"sinnoh"` - Generation IV (IDs 387-493)
+  - `"unova"` - Generation V (IDs 494-649)
+  - `"kalos"` - Generation VI (IDs 650-721)
+  - `"alola"` - Generation VII (IDs 722-809)
+  - `"galar"` - Generation VIII (IDs 810-905)
+  - `"paldea"` - Generation IX (IDs 906+)
+</ResponseField>
+
+### types
+
+<ResponseField name="types" type="string[]" default="[]">
+  Array of selected Pokemon type filters (e.g., `["fire", "water"]`)
+</ResponseField>
+
+### sort
+
+<ResponseField name="sort" type="PokeSort" default="'id-asc'">
+  Current sort order. Options:
+  - `"id-asc"` - ID ascending (1, 2, 3...)
+  - `"id-desc"` - ID descending (905, 904, 903...)
+  - `"name-asc"` - Alphabetical A-Z
+  - `"name-desc"` - Alphabetical Z-A
+</ResponseField>
+
+### view
+
+<ResponseField name="view" type="View" default="'grid'">
+  Display mode for Pokemon lists:
+  - `"grid"` - Grid card layout
+  - `"list"` - List/table layout
+</ResponseField>
+
+### query
+
+<ResponseField name="query" type="string" default="''">
+  Current search query string
+</ResponseField>
+
+---
+
+## Actions
+
+### setView
+
+Update the display mode.
+
+```typescript
+setView(view: 'grid' | 'list'): void
+```
+
+<ParamField path="view" type="'grid' | 'list'" required>
+  Display mode to set
+</ParamField>
+
+### setSort
+
+Change the sort order and reset to page 1.
+
+```typescript
+setSort(sort: PokeSort): void
+```
+
+<ParamField path="sort" type="PokeSort" required>
+  Sort mode: `"id-asc"` | `"id-desc"` | `"name-asc"` | `"name-desc"`
+</ParamField>
+
+**Side effect**: Resets `page` to 1
+
+### setPage
+
+Navigate to a specific page.
+
+```typescript
+setPage(page: number): void
+```
+
+<ParamField path="page" type="number" required>
+  Page number to navigate to (1-based)
+</ParamField>
+
+### setRegion
+
+Set or toggle the region filter.
+
+```typescript
+setRegion(region: RegionName): void
+```
+
+<ParamField path="region" type="RegionName" required>
+  Region name to filter by
+</ParamField>
+
+**Behavior**: 
+- If clicking the same region → Sets to `"all"` (toggles off)
+- If clicking different region → Sets to that region
+- Resets `page` to 1
+
+### setTypes
+
+Set the array of type filters.
+
+```typescript
+setTypes(types: string[]): void
+```
+
+<ParamField path="types" type="string[]" required>
+  Array of type names to filter by (e.g., `["fire", "electric"]`)
+</ParamField>
+
+**Side effect**: Resets `page` to 1
+
+### setQuery
+
+Update the search query.
+
+```typescript
+setQuery(query: string): void
+```
+
+<ParamField path="query" type="string" required>
+  Search query string
+</ParamField>
+
+### resetTweaks
+
+Reset all state to default values.
+
+```typescript
+resetTweaks(): void
+```
+
+**Resets to**:
+- `page`: 1
+- `region`: "all"
+- `types`: []
+- `query`: ""
+- `sort`: "id-asc"
+- `view`: "grid"
+
+---
+
+## Usage Examples
+
+### Basic Store Access
+
+```typescript
+import { useTweaksStore } from '@/stores/tweaks.store'
+
+function FilterControls() {
+  const { region, sort, view } = useTweaksStore()
+  const { setRegion, setSort, setView } = useTweaksStore()
+
+  return (
+    <div>
+      <select value={region} onChange={e => setRegion(e.target.value)}>
+        <option value="all">All Regions</option>
+        <option value="kanto">Kanto</option>
+        <option value="johto">Johto</option>
+      </select>
+
+      <select value={sort} onChange={e => setSort(e.target.value)}>
+        <option value="id-asc">ID Ascending</option>
+        <option value="id-desc">ID Descending</option>
+        <option value="name-asc">Name A-Z</option>
+        <option value="name-desc">Name Z-A</option>
+      </select>
+
+      <button onClick={() => setView(view === 'grid' ? 'list' : 'grid')}>
+        {view === 'grid' ? 'List View' : 'Grid View'}
+      </button>
+    </div>
+  )
+}
+```
+
+### Optimized Selectors
+
+```typescript
+// Only re-render when sort changes
+function SortSelector() {
+  const sort = useTweaksStore(state => state.sort)
+  const setSort = useTweaksStore(state => state.setSort)
+
+  return (
+    <select value={sort} onChange={e => setSort(e.target.value)}>
+      <option value="id-asc">Lowest ID First</option>
+      <option value="id-desc">Highest ID First</option>
+      <option value="name-asc">A to Z</option>
+      <option value="name-desc">Z to A</option>
+    </select>
+  )
+}
+
+// Only re-render when view changes
+function ViewToggle() {
+  const view = useTweaksStore(state => state.view)
+  const setView = useTweaksStore(state => state.setView)
+
+  return (
+    <button onClick={() => setView(view === 'grid' ? 'list' : 'grid')}>
+      <Icon name={view === 'grid' ? 'grid' : 'list'} />
+    </button>
+  )
+}
+```
+
+### Region Toggle Buttons
+
+```typescript
+import { useTweaksStore } from '@/stores/tweaks.store'
+import { REGIONS } from '@/constants'
+
+function RegionFilter() {
+  const region = useTweaksStore(state => state.region)
+  const setRegion = useTweaksStore(state => state.setRegion)
+
+  return (
+    <div className="flex gap-2">
+      {REGIONS.map(r => (
+        <button
+          key={r.name}
+          onClick={() => setRegion(r.name)}
+          className={region === r.name ? 'active' : ''}
+        >
+          {r.name.charAt(0).toUpperCase() + r.name.slice(1)}
+        </button>
+      ))}
+      {region !== 'all' && (
+        <button onClick={() => setRegion('all')}>Clear</button>
+      )}
+    </div>
+  )
+}
+```
+
+### Type Filter with Pills
+
+```typescript
+function TypeFilter() {
+  const types = useTweaksStore(state => state.types)
+  const setTypes = useTweaksStore(state => state.setTypes)
+
+  const toggleType = (typeName: string) => {
+    const newTypes = types.includes(typeName)
+      ? types.filter(t => t !== typeName)
+      : [...types, typeName]
+    setTypes(newTypes)
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {['normal', 'fire', 'water', 'electric', 'grass', 'ice', 'fighting', 'poison'].map(type => (
+        <button
+          key={type}
+          onClick={() => toggleType(type)}
+          className={`type-pill ${types.includes(type) ? 'active' : ''}`}
+        >
+          {type}
+        </button>
+      ))}
+      {types.length > 0 && (
+        <button onClick={() => setTypes([])}>Clear All</button>
+      )}
+    </div>
+  )
+}
+```
+
+### Search with Clear
+
+```typescript
+function SearchBar() {
+  const query = useTweaksStore(state => state.query)
+  const setQuery = useTweaksStore(state => state.setQuery)
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        placeholder="Search Pokemon..."
+      />
+      {query && (
+        <button 
+          onClick={() => setQuery('')}
+          className="absolute right-2 top-2"
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  )
+}
+```
+
+### Reset All Filters
+
+```typescript
+function ResetFiltersButton() {
+  const resetTweaks = useTweaksStore(state => state.resetTweaks)
+  const { query, region, types, sort } = useTweaksStore()
+
+  const hasFilters = query || region !== 'all' || types.length > 0 || sort !== 'id-asc'
+
+  if (!hasFilters) return null
+
+  return (
+    <button onClick={resetTweaks} className="btn-secondary">
+      Reset All Filters
+    </button>
+  )
+}
+```
+
+---
+
+## Persistence Configuration
+
+```typescript
+persist(
+  (set, get) => ({ /* state and actions */ }),
+  {
+    name: 'pokenex-tweaks',
+    storage: createJSONStorage(() => sessionStorage),
+    partialize: (state) => ({
+      view: state.view,
+      region: state.region,
+      types: state.types,
+    })
+  }
+)
+```
+
+### What Gets Persisted
+
+<CardGroup cols={2}>
+  <Card title="Persisted" icon="floppy-disk">
+    - `view` (grid/list)
+    - `region` (filter)
+    - `types` (filter)
+  </Card>
+  
+  <Card title="Not Persisted" icon="ban">
+    - `page` (resets to 1)
+    - `query` (search cleared)
+    - `sort` (resets to default)
+  </Card>
+</CardGroup>
+
+### Storage Details
+
+- **Storage Type**: `sessionStorage` (not `localStorage`)
+- **Lifetime**: Cleared when tab/window closes
+- **Scope**: Per-tab (each browser tab has independent state)
+- **Key**: `pokenex-tweaks`
+
+---
+
+## Auto-Reset Behavior
+
+Several actions automatically reset the page to 1:
+
+```typescript
+setSort: (sort) => set({ sort, page: 1 })      // Reset on sort change
+setRegion: (region) => set({ region, page: 1 }) // Reset on region change
+setTypes: (types) => set({ types, page: 1 })   // Reset on type change
+```
+
+**Why?** Prevents showing empty pages when filter results change.
+
+**Example**:
+1. User is on page 5 viewing all Pokemon
+2. User filters by "fire" type
+3. Only 30 fire Pokemon exist (fits on 2 pages)
+4. Page auto-resets to 1 (prevents blank page 5)
+
+---
+
+## Region Toggle Logic
+
+The `setRegion` action has special toggle behavior:
+
+```typescript
+setRegion: (region) => {
+  const newRegion = region === get().region ? 'all' : region
+  set({ region: newRegion, page: 1 })
+}
+```
+
+**Behavior**:
+- Click "Kanto" → Sets region to "kanto"
+- Click "Kanto" again → Sets region to "all" (clears filter)
+- Click "Johto" → Sets region to "johto" (switches region)
+
+---
+
+## Complete Example
+
+```typescript
+import { useTweaksStore } from '@/stores/tweaks.store'
+import { usePokeFilters } from '@/hooks/usePokeFilters'
+import { usePaginate } from '@/hooks/usePaginate'
+
+function PokemonBrowser({ allPokemon }) {
+  // Get all filter state
+  const {
+    query,
+    region,
+    types,
+    sort,
+    view,
+    page,
+    setQuery,
+    setRegion,
+    setSort,
+    setTypes,
+    setView,
+    setPage,
+    resetTweaks
+  } = useTweaksStore()
+
+  // Apply filters (uses query, region, types, sort from store)
+  const { list: filtered } = usePokeFilters(allPokemon, { debounce: 300 })
+
+  // Paginate filtered results (uses page from store)
+  const { paginated, pages, next, prev } = usePaginate(filtered, 24)
+
+  return (
+    <div>
+      {/* Search */}
+      <input
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        placeholder="Search..."
+      />
+
+      {/* Region Filter */}
+      <div>
+        {['kanto', 'johto', 'hoenn', 'sinnoh'].map(r => (
+          <button
+            key={r}
+            onClick={() => setRegion(r)}
+            className={region === r ? 'active' : ''}
+          >
+            {r}
+          </button>
+        ))}
+      </div>
+
+      {/* Type Filter */}
+      <div>
+        {['fire', 'water', 'grass', 'electric'].map(t => (
+          <button
+            key={t}
+            onClick={() => {
+              const newTypes = types.includes(t)
+                ? types.filter(type => type !== t)
+                : [...types, t]
+              setTypes(newTypes)
+            }}
+            className={types.includes(t) ? 'active' : ''}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {/* Sort & View */}
+      <select value={sort} onChange={e => setSort(e.target.value)}>
+        <option value="id-asc">ID ↑</option>
+        <option value="id-desc">ID ↓</option>
+        <option value="name-asc">Name A-Z</option>
+        <option value="name-desc">Name Z-A</option>
+      </select>
+
+      <button onClick={() => setView(view === 'grid' ? 'list' : 'grid')}>
+        {view === 'grid' ? '☰ List' : '⊞ Grid'}
+      </button>
+
+      <button onClick={resetTweaks}>Reset All</button>
+
+      {/* Results */}
+      <p>{filtered.length} results</p>
+
+      <div className={view === 'grid' ? 'grid' : 'list'}>
+        {paginated.map(pokemon => (
+          <PokemonCard key={pokemon.id} pokemon={pokemon} />
+        ))}
+      </div>
+
+      {/* Pagination */}
+      {pages > 1 && (
+        <div>
+          <button onClick={prev} disabled={page === 1}>Prev</button>
+          <span>Page {page} of {pages}</span>
+          <button onClick={next} disabled={page === pages}>Next</button>
+        </div>
+      )}
+    </div>
+  )
+}
+```
+
+---
+
+## TypeScript Types
+
+```typescript
+// View type
+export type View = 'grid' | 'list'
+
+// Region names
+type RegionName = 
+  | 'kanto' | 'johto' | 'hoenn' | 'sinnoh'
+  | 'unova' | 'kalos' | 'alola' | 'galar' | 'paldea'
+  | 'all'
+
+// Sort options
+type PokeSort = 'id-asc' | 'id-desc' | 'name-asc' | 'name-desc'
+
+// Type names
+type PokeTypeName = 
+  | 'normal' | 'fire' | 'water' | 'electric' | 'grass' | 'ice'
+  | 'fighting' | 'poison' | 'ground' | 'flying' | 'psychic' | 'bug'
+  | 'rock' | 'ghost' | 'dragon' | 'dark' | 'steel' | 'fairy'
+```
+
+---
+
+## Related
+
+- [usePokeFilters Hook](/api/hooks/use-poke-filters) - Consumes this store for filtering
+- [usePaginate Hook](/api/hooks/use-paginate) - Consumes this store for pagination
+- [Favorite Store](/api/stores/favorite-store) - Similar Zustand store pattern
+- [useHydrated Hook](/api/hooks/use-hydrated) - Useful for preventing SSR mismatches
