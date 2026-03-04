@@ -1,0 +1,183 @@
+---
+title: useIsMobile
+description: React hook for detecting mobile viewport breakpoints with automatic updates on window resize
+---
+
+The `useIsMobile` hook provides a simple way to detect whether the current viewport is mobile-sized (width < 640px), with automatic updates when the window is resized.
+
+## Signature
+
+```typescript
+function useIsMobile(): boolean
+```
+
+## Returns
+
+<ResponseField name="isMobile" type="boolean">
+  `true` if the viewport width is less than 640px, `false` otherwise
+</ResponseField>
+
+---
+
+## Implementation
+
+```typescript src/hooks/useIsMobile.ts
+import { useState, useEffect } from 'react'
+
+export const useIsMobile = (): boolean => {
+  const [isMobile, setIsMobile] = useState<boolean>(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 640)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
+  return isMobile
+}
+```
+
+## How it works
+
+1. **Initial state**: Starts with `false` to prevent hydration mismatches
+2. **Effect runs**: After mount, checks the current window width
+3. **Event listener**: Attaches resize listener for responsive updates
+4. **Cleanup**: Removes listener on unmount to prevent memory leaks
+
+<Note>
+  The initial state is `false` to match the server-rendered state. The actual check happens client-side after hydration.
+</Note>
+
+---
+
+## Usage
+
+### Basic responsive behavior
+
+```typescript
+import { useIsMobile } from '@/hooks'
+
+function ResponsiveComponent() {
+  const isMobile = useIsMobile()
+
+  return (
+    <div>
+      {isMobile ? (
+        <MobileView />
+      ) : (
+        <DesktopView />
+      )}
+    </div>
+  )
+}
+```
+
+### Conditional rendering
+
+```typescript
+import { useIsMobile } from '@/hooks'
+
+function Navigation() {
+  const isMobile = useIsMobile()
+
+  return (
+    <nav>
+      {isMobile ? (
+        <HamburgerMenu />
+      ) : (
+        <FullNavigation />
+      )}
+    </nav>
+  )
+}
+```
+
+### Adjust layout based on screen size
+
+```typescript
+import { useIsMobile } from '@/hooks'
+
+function Gallery() {
+  const isMobile = useIsMobile()
+  
+  const columns = isMobile ? 2 : 4
+  const imageSize = isMobile ? 'small' : 'large'
+
+  return (
+    <div className={`grid grid-cols-${columns}`}>
+      {items.map(item => (
+        <Image key={item.id} size={imageSize} />
+      ))}
+    </div>
+  )
+}
+```
+
+---
+
+## Breakpoint
+
+The hook uses **640px** as the mobile breakpoint, which corresponds to Tailwind CSS's `sm` breakpoint.
+
+| Breakpoint | Width | Classification |
+|------------|-------|----------------|
+| < 640px    | Mobile | `isMobile = true` |
+| ≥ 640px    | Desktop | `isMobile = false` |
+
+<Tip>
+  If you need custom breakpoints, consider creating a variant like `useBreakpoint(width)` or use CSS media queries with Tailwind's responsive classes.
+</Tip>
+
+---
+
+## Performance considerations
+
+### Debouncing resize events
+
+For performance-critical applications, consider debouncing the resize handler:
+
+```typescript
+import { useIsMobile } from '@/hooks'
+import { useDebounce } from '@/hooks'
+
+function PerformantComponent() {
+  const isMobileRaw = useIsMobile()
+  const isMobile = useDebounce(isMobileRaw, 150)
+  
+  // Now resize events are debounced by 150ms
+  return <div>{isMobile ? 'Mobile' : 'Desktop'}</div>
+}
+```
+
+### SSR considerations
+
+The hook initializes to `false` on the server to avoid hydration mismatches. The actual value is computed client-side after mount.
+
+```typescript
+function SafeComponent() {
+  const isMobile = useIsMobile()
+  const [hydrated, setHydrated] = useState(false)
+
+  useEffect(() => setHydrated(true), [])
+
+  if (!hydrated) {
+    return <Skeleton />
+  }
+
+  return isMobile ? <MobileView /> : <DesktopView />
+}
+```
+
+---
+
+## Related hooks
+
+<CardGroup cols={2}>
+  <Card title="useDebounce" icon="clock" href="/api/hooks/use-debounce">
+    Debounce rapidly changing values
+  </Card>
+  <Card title="useHydrated" icon="droplet" href="/api/hooks/use-hydrated">
+    Detect client-side hydration completion
+  </Card>
+</CardGroup>

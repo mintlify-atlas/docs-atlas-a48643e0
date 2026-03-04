@@ -36,7 +36,7 @@ export async function generateStaticParams() {
 
 Each static page includes dynamically generated metadata for optimal SEO:
 
-```typescript src/app/pokemon/[slug]/page.tsx
+```typescript
 export async function generateMetadata({ params }: Props) {
   const { slug } = await params
   const { data, error } = await getPokemonDetail(slug)

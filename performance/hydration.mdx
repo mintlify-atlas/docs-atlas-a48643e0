@@ -99,7 +99,7 @@ export const useHydrated = () => {
 
 The main gallery uses `useHydrated` to prevent flickering when loading user preferences:
 
-```typescript src/components/pokemon/PokeGallery.tsx
+```typescript
 'use client'
 
 import { useHydrated } from '@/hooks/useHydrated'
@@ -240,7 +240,7 @@ export const FavoriteButton = ({ pokemon }: Props) => {
 
 Poke-Nex uses `sessionStorage` for view preferences that should reset between sessions:
 
-```typescript src/stores/tweaks.store.ts
+```typescript
 export const useTweaksStore = create<TweaksState>()()
   persist(
     (set, get) => ({
@@ -277,7 +277,7 @@ export const useTweaksStore = create<TweaksState>()()
 
 Favorites use `localStorage` to persist across all sessions:
 
-```typescript src/stores/favorite.store.ts
+```typescript
 export const useFavoriteStore = create<Store>()()
   persist(
     (set, get) => ({
@@ -318,7 +318,7 @@ export const useFavoriteStore = create<Store>()()
 
 Skeletons provide instant visual feedback during hydration:
 
-```typescript src/components/pokemon/PokeGallery.tsx
+```typescript
 if (!isHydrated) return <PokeGallerySkeleton />
 ```
 
@@ -473,7 +473,7 @@ const nextConfig = {
 
 React will log warnings like:
 
-```
+```text
 Warning: Text content did not match. Server: "Add to favorites" Client: "Remove from favorites"
 ```
 

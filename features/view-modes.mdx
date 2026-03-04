@@ -9,7 +9,7 @@ Poke-Nex offers two distinct view modes for browsing Pokemon: **Grid View** and 
 
 The view mode is defined as a simple string union type:
 
-```typescript tweaks.store.ts
+```typescript
 export type View = 'grid' | 'list'
 ```
 
@@ -57,7 +57,7 @@ Grid view displays Pokemon as cards in a responsive grid layout.
 
 ### GridContainer Component
 
-```typescript GridContainer.tsx
+```typescript
 interface Props {
   children: React.ReactNode
 }
@@ -93,7 +93,7 @@ export const GridContainer = ({ children }: Props) => {
 
 ### Grid View Usage
 
-```typescript PokeGallery.tsx
+```typescript
 {view === 'grid' ? (
   <GridContainer>
     {paginatedList.map((pokemon) => (
@@ -111,7 +111,7 @@ Table view displays Pokemon in a compact, scannable table format.
 
 ### PokemonTable Component
 
-```typescript PokemonTable.tsx
+```typescript
 interface Props {
   content: PokemonSummary[]
 }
@@ -141,7 +141,7 @@ export const PokemonTable = ({ content }: Props) => {
 
 ### Table Row Implementation
 
-```typescript TableRow.tsx
+```typescript
 const TableRow = memo(({ pokemon }: { pokemon: PokemonSummary }) => {
   const router = useRouter()
   const toggleFavorite = useFavoriteActions().toggleFavorite
@@ -200,7 +200,7 @@ const TableRow = memo(({ pokemon }: { pokemon: PokemonSummary }) => {
 
 The view toggle button is part of the FilterBar component:
 
-```typescript FilterBar.tsx
+```typescript
 import { IoGrid } from 'react-icons/io5'
 import { HiMiniListBullet } from 'react-icons/hi2'
 
@@ -225,7 +225,7 @@ This indicates what will happen when clicked.
 
 ## Integration in PokeGallery
 
-```typescript PokeGallery.tsx
+```typescript
 'use client'
 
 import { useTweaksStore } from '@/stores/tweaks.store'

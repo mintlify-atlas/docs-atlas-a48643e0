@@ -93,7 +93,7 @@ Stores the currently selected Pokemon variety (e.g., Alolan form, Galarian form)
 The component calculates the theme based on the current variety's types:
 
 ```tsx
-const currentTypes = 
+const currentTypes =
   selectedVariety.types.length > 0 ? selectedVariety.types : data.types
   
 const type = getMostColorfulType(currentTypes.map((t) => t.name))
