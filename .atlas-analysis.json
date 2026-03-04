@@ -1,0 +1,144 @@
+{
+  "projectType": "frontend",
+  "projectName": "Poke-Nex",
+  "projectDescription": "A high-performance Pokédex portfolio project built with Next.js 15, TypeScript, and Tailwind CSS featuring Clean Architecture and SSG/ISR.",
+  "theme": "palm",
+  "primaryColor": "#EE1515",
+  "lightColor": "#FF6B6B",
+  "darkColor": "#CC0000",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "features"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "architecture/overview",
+              "architecture/clean-architecture",
+              "architecture/data-flow"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/search-filtering",
+              "features/favorites",
+              "features/view-modes",
+              "features/type-calculator",
+              "features/pokemon-variations"
+            ]
+          },
+          {
+            "group": "Performance",
+            "pages": [
+              "performance/ssg-isr",
+              "performance/optimization",
+              "performance/hydration"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Components",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "components/overview"
+            ]
+          },
+          {
+            "group": "Pokemon Components",
+            "pages": [
+              "components/pokemon-card",
+              "components/poke-gallery",
+              "components/pokemon-detail",
+              "components/evolution-chain",
+              "components/favorite-button"
+            ]
+          },
+          {
+            "group": "Calculator",
+            "pages": [
+              "components/type-calculator",
+              "components/type-selector"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Services",
+            "pages": [
+              "api/services/pokemon-service"
+            ]
+          },
+          {
+            "group": "Adapters",
+            "pages": [
+              "api/adapters/pokemon-detail",
+              "api/adapters/pokemon-summary"
+            ]
+          },
+          {
+            "group": "Hooks",
+            "pages": [
+              "api/hooks/use-poke-filters",
+              "api/hooks/use-debounce",
+              "api/hooks/use-hydrated",
+              "api/hooks/use-paginate"
+            ]
+          },
+          {
+            "group": "State Management",
+            "pages": [
+              "api/stores/favorite-store",
+              "api/stores/tweaks-store"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Static Site Generation (SSG) with Incremental Static Regeneration (ISR)",
+    "Clean Architecture (Fetchers, Adapters, Services layers)",
+    "Advanced search and filtering with debounce logic",
+    "Persisted state management with Zustand",
+    "Pokemon variations and forms support",
+    "Hybrid view modes (Grid/Table)",
+    "Type effectiveness calculator",
+    "Favorite Pokemon collection with localStorage persistence"
+  ],
+  "publicApiSurface": [
+    "getPokemonDetail(slug, extended)",
+    "getPokemonList()",
+    "getPokemonListGQL()",
+    "getPokemonDetailList()",
+    "getEvolutionChain(id)",
+    "adaptPokemon(apiResponse)",
+    "adaptPokemonSummary(apiResponse)",
+    "useFavoriteStore",
+    "useTweaksStore",
+    "usePokeFilters()",
+    "useDebounce()",
+    "useHydrated()",
+    "usePaginate()",
+    "PokeGallery",
+    "PokemonCard",
+    "PokemonDetailView",
+    "EvolutionChain",
+    "TypeCalculator"
+  ]
+}
